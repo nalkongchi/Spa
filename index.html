@@ -1,9 +1,23 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#F7FAFF" />
+  <meta name="theme-color" id="themeColorMeta" content="#F7FAFF" />
+  <script>
+    (() => {
+      try {
+        const saved = localStorage.getItem('spa45-theme');
+        const theme = saved === 'dark' || saved === 'light'
+          ? saved
+          : (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      } catch (_) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
   <title>SPA 45점 목표 5주 트레이너</title>
   <link rel="stylesheet" href="./css/app.css" />
 </head>
@@ -13,9 +27,13 @@
       <div class="topbar">
         <div class="brand">
           <h1>SPA 45점 목표 5주 트레이너</h1>
-          <p>실사용 베타 · 수동 녹음 · 누적 비교 · 회차 기반 복습</p>
+          <p>실사용 베타 · 수동 녹음 · 누적 비교 · 표현 회상 훈련</p>
         </div>
-        <button class="iconbtn" id="themeQuick" type="button" aria-label="화면 테마 전환">◐</button>
+        <button class="iconbtn theme-toggle" id="themeQuick" type="button" aria-label="야간모드로 전환" title="야간모드로 전환" aria-pressed="false">
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.2A8.3 8.3 0 0 1 8.8 3.8a8.6 8.6 0 1 0 11.4 11.4Z"/></svg>
+          <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
+          <span class="sr-only" id="themeButtonText">야간모드로 전환</span>
+        </button>
       </div>
       <nav class="tabs" aria-label="주요 메뉴">
         <button class="tab active" data-tab="course" type="button">5주 과정</button>
@@ -25,6 +43,7 @@
       </nav>
     </div>
   </header>
+  <div class="sr-only" id="themeAnnounce" aria-live="polite"></div>
 
   <div class="app">
     <section class="panel active" id="panel-course">
@@ -32,7 +51,7 @@
         <div class="session-summary">
           <div class="summary-cell"><b id="doneSessions">0/35</b><span class="desktop-label">완료 회차</span><span class="mobile-label">완료</span></div>
           <div class="summary-cell"><b id="savedAnswers">0</b><span class="desktop-label">저장 답변</span><span class="mobile-label">답변</span></div>
-          <div class="summary-cell"><b id="dueReviews">0</b><span class="desktop-label">복습 대기</span><span class="mobile-label">복습</span></div>
+          <div class="summary-cell"><b id="dueReviews">0</b><span class="desktop-label">저장 표현</span><span class="mobile-label">표현</span></div>
           <div class="summary-cell"><b id="audioCount">0</b><span class="desktop-label">누적 녹음</span><span class="mobile-label">녹음</span></div>
         </div>
       </div>
@@ -134,7 +153,41 @@
               </div>
             </div>
 
-            <label class="checkitem retry-check"><input type="checkbox" id="retryFlag" /> 이 문제는 다시 연습할 필요가 있다</label>
+            <label class="checkitem retry-check"><input type="checkbox" id="retryFlag" /> 이 문제는 기록에서 다시 확인할 필요가 있다</label>
+
+            <section class="expression-capture" aria-labelledby="expressionCaptureTitle">
+              <div class="expression-capture-head">
+                <div>
+                  <div class="task-type">재사용 표현</div>
+                  <h3 id="expressionCaptureTitle">이 답변에서 다시 쓰고 싶은 표현</h3>
+                </div>
+                <span class="expression-optional">선택</span>
+              </div>
+              <p class="muted expression-help">긴 답안 전체보다 다른 문제에도 쓸 수 있는 짧은 덩어리나 빈칸 문장틀을 저장하세요.</p>
+              <div id="expressionSuggestions" class="expression-suggestions"></div>
+              <div class="expression-form-grid">
+                <div class="field">
+                  <label for="expressionText">기억할 표현</label>
+                  <input id="expressionText" type="text" maxlength="180" placeholder="예: One practical solution would be to ___." />
+                </div>
+                <div class="field">
+                  <label for="expressionCue">한국어 회상 단서</label>
+                  <input id="expressionCue" type="text" maxlength="180" placeholder="예: 실용적인 해결책을 제안할 때" />
+                </div>
+                <div class="field expression-example-field">
+                  <label for="expressionExample">내 예문</label>
+                  <textarea id="expressionExample" maxlength="600" placeholder="예: One practical solution would be to provide additional training."></textarea>
+                </div>
+                <div class="field">
+                  <label for="expressionCategory">말하기 기능</label>
+                  <select id="expressionCategory"></select>
+                </div>
+              </div>
+              <div class="expression-save-row">
+                <div id="expressionSaveStatus" class="listen-status" aria-live="polite"></div>
+                <button class="btn secondary" id="saveExpression" type="button">표현 카드로 저장</button>
+              </div>
+            </section>
 
             <div class="evaluation-actions">
               <button class="btn secondary" id="backToAnswer" type="button">답변 화면으로</button>
@@ -166,11 +219,54 @@
     </section>
 
     <section class="panel" id="panel-records">
-      <div class="section-title">
-        <div><h2>학습 기록</h2><p>받아쓰기와 1차·재도전 녹음이 이 기기에 누적됩니다.</p></div>
-        <button class="btn secondary small" id="clearFilter" type="button">전체 보기</button>
+      <div class="section-title records-title">
+        <div><h2>표현 기록</h2><p>과거 활동을 쌓아두는 대신, 실제 답변에서 건진 표현을 다시 꺼내 말합니다.</p></div>
+        <button class="btn secondary small" id="clearFilter" type="button">전체 표현</button>
       </div>
-      <div id="recordList"></div>
+
+      <div class="card expression-review-summary">
+        <div>
+          <div class="task-type">오늘의 표현 복습</div>
+          <h2><span id="expressionDueCount">0</span>개가 기다리고 있어요</h2>
+          <p id="expressionDueMessage" class="muted">새 문제를 풀고 재사용할 표현을 저장해보세요.</p>
+        </div>
+        <button class="btn" id="startExpressionReview" type="button">복습 시작</button>
+      </div>
+
+      <div class="card expression-review-panel hidden" id="expressionReviewPanel" aria-live="polite">
+        <div class="expression-review-progress" id="expressionReviewProgress"></div>
+        <span class="chip" id="expressionReviewCategory">기타</span>
+        <div class="expression-review-cue" id="expressionReviewCue"></div>
+        <p class="muted">영어 표현을 먼저 소리 내어 말해보세요.</p>
+        <button class="btn" id="revealExpressionAnswer" type="button">표현 보기</button>
+        <div id="expressionReviewAnswer" class="expression-review-answer hidden">
+          <strong id="expressionReviewText" lang="en"></strong>
+          <p id="expressionReviewExample" lang="en"></p>
+          <div class="expression-review-rating">
+            <button class="btn danger" data-expression-rate="again" type="button">기억 안 남</button>
+            <button class="btn secondary" data-expression-rate="assisted" type="button">도움받아 말함</button>
+            <button class="btn good" data-expression-rate="fluent" type="button">바로 말함</button>
+          </div>
+        </div>
+        <button class="btn secondary small" id="closeExpressionReview" type="button">복습 닫기</button>
+      </div>
+
+      <div class="card expression-library">
+        <div class="expression-library-head">
+          <div>
+            <div class="task-type">내 표현 카드</div>
+            <h2><span id="expressionTotalCount">0</span>개 저장됨</h2>
+          </div>
+          <div class="expression-mini-stats"><span>익히는 중 <b id="expressionLearningCount">0</b></span><span>익숙해짐 <b id="expressionMasteredCount">0</b></span></div>
+        </div>
+        <div class="expression-category-filter" id="expressionCategoryFilter" aria-label="표현 기능별 필터"></div>
+        <div id="expressionCardList"></div>
+      </div>
+
+      <details class="card learning-records" id="learningRecordsDetails">
+        <summary><span>전체 학습 기록</span><small>받아쓰기·평가·녹음 기록 보기</small></summary>
+        <div id="recordList"></div>
+      </details>
     </section>
 
     <section class="panel" id="panel-settings">
@@ -199,7 +295,7 @@
         </div>
         <div id="voiceStatus" class="listen-status">영어 음성 목록을 준비하고 있습니다.</div>
         <label class="checkitem"><input type="checkbox" id="speakQuestion" /> 질문을 처음 표시할 때 영어로 읽어주기</label>
-        <label class="checkitem settings-check"><input type="checkbox" id="darkMode" /> 어두운 화면 사용</label>
+        <input type="checkbox" id="darkMode" class="hidden" tabindex="-1" aria-hidden="true" />
       </div>
 
       <div class="card">

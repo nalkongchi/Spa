@@ -5,9 +5,12 @@ const OLD_STORE_KEY = 'spa45_fiveweek_v1';
 const DB_NAME = 'spa45_audio_v2';
 const DB_VERSION = 1;
 const AUDIO_STORE = 'clips';
+const THEME_KEY = 'spa45-theme';
+const EXPRESSION_CARDS_KEY = 'spa45_expression_cards_v1';
+const EXPRESSION_REVIEW_KEY = 'spa45_expression_review_v1';
 
 const defaultState = {
-  contentVersion: '4.2-speakflow-photo',
+  contentVersion: '5.0-expression-dark-strategy',
   settings: {
     revealSec: 10,
     ttsRate: 0.95,
@@ -35,13 +38,27 @@ const checksDef = [
   ['flow', '연결어를 사용해 흐름을 만들었다']
 ];
 
+const EXPRESSION_CATEGORIES = ['의견 말하기','이유 설명','장점 설명','예시 들기','비교하기','문제 설명','문제 해결','해결책 제안','경험 이야기','사진 묘사','그래프 비교','추측하기','결론 내리기','요약','가정 상황','자기소개','추천과 설득','조언하기','습관 설명','시간 벌기','기타'];
+
 const $ = id => document.getElementById(id);
 const clone = value => JSON.parse(JSON.stringify(value));
 const esc = (value = '') => String(value).replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[char]));
 
+function loadLocalJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : clone(fallback);
+  } catch (error) {
+    console.warn(`${key} 데이터를 읽지 못했습니다.`, error);
+    return clone(fallback);
+  }
+}
+
 let state = loadState();
+let expressionCards = loadLocalJSON(EXPRESSION_CARDS_KEY, []);
+let expressionReview = loadLocalJSON(EXPRESSION_REVIEW_KEY, {});
 let db = null;
 let currentSession = null;
 let currentTasks = [];
@@ -72,6 +89,9 @@ let activeUtterance = null;
 let activeSpeechKind = '';
 let stage = 'answer';
 let openWeeks = null;
+let expressionFilter = '전체';
+let expressionReviewQueue = [];
+let expressionReviewIndex = 0;
 
 function loadState() {
   try {
@@ -111,6 +131,12 @@ function saveState() {
   updateStats();
 }
 
+function saveExpressionData() {
+  localStorage.setItem(EXPRESSION_CARDS_KEY, JSON.stringify(expressionCards));
+  localStorage.setItem(EXPRESSION_REVIEW_KEY, JSON.stringify(expressionReview));
+  updateStats();
+}
+
 function fmt(seconds) {
   const value = Math.max(0, Math.round(Number(seconds) || 0));
   return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
@@ -129,9 +155,34 @@ function extForMime(mime = '') {
   return 'webm';
 }
 
-function updateTheme() {
-  document.documentElement.dataset.theme = state.settings.darkMode ? 'dark' : '';
-  $('darkMode').checked = state.settings.darkMode;
+function preferredTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'dark' || saved === 'light') return saved;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function updateTheme(nextTheme = preferredTheme(), announce = false) {
+  const theme = nextTheme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  state.settings.darkMode = theme === 'dark';
+  if ($('darkMode')) $('darkMode').checked = theme === 'dark';
+  const toggle = $('themeQuick');
+  const label = theme === 'dark' ? '라이트모드로 전환' : '야간모드로 전환';
+  if (toggle) {
+    toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('title', label);
+    toggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+  }
+  if ($('themeButtonText')) $('themeButtonText').textContent = label;
+  if ($('themeColorMeta')) $('themeColorMeta').setAttribute('content', theme === 'dark' ? '#0B0E14' : '#F7FAFF');
+  if (announce && $('themeAnnounce')) $('themeAnnounce').textContent = theme === 'dark' ? '야간모드가 적용되었습니다.' : '라이트모드가 적용되었습니다.';
+}
+
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem(THEME_KEY, next);
+  updateTheme(next, true);
 }
 
 function stopAllSpeech() {
@@ -162,11 +213,7 @@ document.querySelectorAll('.tab').forEach(button => {
   button.addEventListener('click', () => setTab(button.dataset.tab));
 });
 $('backCourse').addEventListener('click', () => setTab('course'));
-$('themeQuick').addEventListener('click', () => {
-  state.settings.darkMode = !state.settings.darkMode;
-  updateTheme();
-  saveState();
-});
+$('themeQuick').addEventListener('click', toggleTheme);
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -254,51 +301,54 @@ function buildSourceCatalog() {
 }
 
 const SOURCE_CATALOG = buildSourceCatalog();
-const STARTERS = WARMUP_BANK.slice(0, 3).map((question, index) => ({
-  source: `starter-${index + 1}`,
-  type: 'interview',
-  title: '워밍업 복습',
-  question,
-  originOrder: 0
-}));
-
-function dueCount(order = 36) {
-  return Object.values(state.reviewMeta).filter(meta => meta.nextDueOrder <= order).length;
+function strategyConfigs(session) {
+  return Array.isArray(STRATEGY_TASKS?.[session.id]) ? STRATEGY_TASKS[session.id] : [];
 }
 
-function getReviewTasks(session, count) {
-  const order = session.order;
-  const metas = Object.entries(state.reviewMeta).filter(([source, meta]) => SOURCE_CATALOG[source] && meta.lastOrder < order);
-  metas.sort((a, b) => {
-    const A = a[1];
-    const B = b[1];
-    const aDue = A.nextDueOrder <= order ? 0 : 1;
-    const bDue = B.nextDueOrder <= order ? 0 : 1;
-    return aDue - bDue || A.nextDueOrder - B.nextDueOrder || A.lastOrder - B.lastOrder;
-  });
-  const selected = [];
-  for (const [source, meta] of metas) {
-    if (selected.length >= count) break;
-    if (meta.nextDueOrder <= order || meta.needsReview || selected.length === 0) selected.push(source);
+function strategyTask(session, config, index) {
+  const id = `${session.id}-x${index + 1}`;
+  if (config.type === 'visual-extra') {
+    const specialIndex = session.specials.findIndex(item => item.title === config.attachToSpecial);
+    const special = session.specials[specialIndex];
+    if (!special) return null;
+    const baseCount = special.questions?.length || 1;
+    const attached = strategyConfigs(session).filter(item => item.type === 'visual-extra' && item.attachToSpecial === special.title);
+    const attachedIndex = attached.findIndex(item => item === config);
+    return {
+      ...clone(special),
+      ...clone(config),
+      type: 'visual',
+      id,
+      source: id,
+      title: `${special.title} · ${config.title}`,
+      visualTitle: special.title,
+      question: config.question,
+      questionRole: 'strategy',
+      questionIndex: baseCount + attachedIndex,
+      visualQuestionIndex: baseCount + attachedIndex,
+      visualQuestionCount: baseCount + attached.length,
+      visualGroupId: `${session.id}-s${specialIndex + 1}`,
+      originOrder: session.order,
+      phase: 'strategy',
+      guide: config.guide || '자료 전체를 먼저 보고 핵심만 골라 답하세요.',
+      expressions: clone(config.expressions || [])
+    };
   }
-  if (selected.length < count) {
-    for (const [source] of metas) {
-      if (selected.length >= count) break;
-      if (!selected.includes(source)) selected.push(source);
-    }
-  }
-  const fallback = [
-    ...Object.values(SOURCE_CATALOG).filter(item => item.originOrder < order && !selected.includes(item.source)),
-    ...STARTERS
-  ].sort((a, b) => (a.originOrder || 0) - (b.originOrder || 0));
-  for (const item of fallback) {
-    if (selected.length >= count) break;
-    if (!selected.includes(item.source)) selected.push(item.source);
-  }
-  return selected.slice(0, count).map((source, index) => {
-    const base = SOURCE_CATALOG[source] || STARTERS.find(item => item.source === source);
-    return { ...clone(base), id: `${session.id}-r${index + 1}`, source, isReview: true, title: `지연 복습 · ${base.title || '문제'}` };
-  });
+  return {
+    ...clone(config),
+    id,
+    source: id,
+    originOrder: session.order,
+    phase: 'strategy',
+    questionRole: config.type === 'listening' ? 'main' : 'strategy',
+    allowListen: config.type === 'listening',
+    revealPassageAfter: config.type === 'listening',
+    expressions: clone(config.expressions || [])
+  };
+}
+
+function strategyTasks(session) {
+  return strategyConfigs(session).map((config, index) => strategyTask(session, config, index)).filter(Boolean);
 }
 
 function interviewTasks(session, officialTask = null, phase = 'practice') {
@@ -317,20 +367,27 @@ function interviewTasks(session, officialTask = null, phase = 'practice') {
 
 function expandSpecial(session, special, specialIndex, officialTask = null, phase = 'practice') {
   const questions = special.questions?.length ? special.questions : [{ role: 'main', label: '문제', text: special.question }];
+  const attachedCount = strategyConfigs(session).filter(item => item.type === 'visual-extra' && item.attachToSpecial === special.title).length;
+  const visualQuestionCount = questions.length + attachedCount;
   return questions.map((question, questionIndex) => {
     const isMain = questionIndex === 0;
     let guide = '';
     if (special.type === 'listening') guide = isMain ? '지문의 핵심과 세부내용을 자기 문장으로 재구성하세요.' : '앞서 들은 내용을 근거로 질문에 직접 답하세요.';
     else if (special.type === 'situation') guide = isMain ? '첫 행동을 분명히 말한 뒤 이유를 붙이세요.' : '같은 상황을 이어서 더 구체적으로 답하세요.';
     else guide = isMain ? '전체 특징부터 말하고 중요한 정보만 선별하세요.' : '자료를 근거로 비교·해석·의견을 말하세요.';
+    const isVisual = special.type === 'visual';
     return {
       ...clone(special),
       id: `${session.id}-s${specialIndex + 1}-q${questionIndex + 1}`,
       source: `${session.id}-s${specialIndex + 1}-q${questionIndex + 1}`,
       title: `${special.title} · ${question.label || `질문 ${questionIndex + 1}`}`,
+      visualTitle: special.title,
       question: question.text || question,
       questionRole: question.role || 'followUp',
       questionIndex,
+      visualQuestionIndex: isVisual ? questionIndex : undefined,
+      visualQuestionCount: isVisual ? visualQuestionCount : undefined,
+      visualGroupId: isVisual ? `${session.id}-s${specialIndex + 1}` : undefined,
       allowListen: special.type === 'listening' && isMain,
       revealPassageAfter: special.type === 'listening' && isMain,
       originOrder: session.order,
@@ -339,6 +396,16 @@ function expandSpecial(session, special, specialIndex, officialTask = null, phas
       guide
     };
   });
+}
+
+function sessionSpecialTasks(session) {
+  const extras = strategyTasks(session).filter(task => task.visualGroupId);
+  const output = [];
+  session.specials.forEach((special, specialIndex) => {
+    output.push(...expandSpecial(session, special, specialIndex));
+    output.push(...extras.filter(task => task.visualGroupId === `${session.id}-s${specialIndex + 1}`));
+  });
+  return output;
 }
 
 function buildMockTasks(session) {
@@ -358,29 +425,31 @@ function buildMockTasks(session) {
   const situationIndex = session.specials.findIndex(item => item.type === 'situation');
   let visualIndex = session.specials.findIndex(item => item.type === 'visual' && item.kind !== 'product');
   if (visualIndex < 0) visualIndex = session.specials.findIndex(item => item.type === 'visual');
-  const listening = listeningIndex >= 0 ? expandSpecial(session, session.specials[listeningIndex], listeningIndex, 2, 'mock').slice(0, 2) : [];
+  const listeningAll = listeningIndex >= 0 ? expandSpecial(session, session.specials[listeningIndex], listeningIndex, 2, 'mock') : [];
+  const listening = listeningAll.slice(0, 2);
   const interviews = interviewTasks(session, null, 'mock');
   const task3 = interviews.slice(0, 2).map(item => ({ ...item, officialTask: 3 }));
-  const task4 = situationIndex >= 0
-    ? expandSpecial(session, session.specials[situationIndex], situationIndex, 4, 'mock').slice(0, 2)
-    : interviews.slice(2).map(item => ({ ...item, officialTask: 4 }));
-  const task5 = visualIndex >= 0 ? expandSpecial(session, session.specials[visualIndex], visualIndex, 5, 'mock').slice(0, 2) : [];
+  const situationAll = situationIndex >= 0 ? expandSpecial(session, session.specials[situationIndex], situationIndex, 4, 'mock') : [];
+  const task4 = situationAll.length ? situationAll.slice(0, 2) : interviews.slice(2).map(item => ({ ...item, officialTask: 4 }));
+  const visualAll = visualIndex >= 0 ? expandSpecial(session, session.specials[visualIndex], visualIndex, 5, 'mock') : [];
+  const task5 = visualAll.slice(0, 2);
   const used = new Set([...listening, ...task4, ...task5].map(item => item.id));
+  const usedVisualGroup = task5[0]?.visualGroupId || null;
   const booster = [];
   interviews.slice(2).forEach(item => booster.push({ ...item, phase: 'booster', title: `약점 보강 · ${item.title}` }));
   session.specials.forEach((special, specialIndex) => {
     expandSpecial(session, special, specialIndex, null, 'booster').forEach(item => {
+      if (usedVisualGroup && item.visualGroupId === usedVisualGroup) return;
       if (!used.has(item.id)) booster.push({ ...item, title: `약점 보강 · ${item.title}` });
     });
   });
-  getReviewTasks(session, 2).forEach(item => booster.push({ ...item, phase: 'booster' }));
   return [...warmups, ...listening, ...task3, ...task4, ...task5, ...booster];
 }
 
 function buildTasks(session) {
   if (session.mock5) return buildMockTasks(session);
-  const reviews = getReviewTasks(session, session.kind === 'weekday' ? 1 : 3);
-  return [...reviews, ...interviewTasks(session), ...session.specials.flatMap((special, index) => expandSpecial(session, special, index))];
+  const strategies = strategyTasks(session).filter(task => !task.visualGroupId);
+  return [...interviewTasks(session), ...strategies, ...sessionSpecialTasks(session)];
 }
 
 function displayMode(session) {
@@ -447,7 +516,7 @@ async function updateStats() {
   const records = Object.values(state.records);
   $('doneSessions').textContent = `${Object.keys(state.completed).length}/35`;
   $('savedAnswers').textContent = records.length;
-  $('dueReviews').textContent = dueCount();
+  $('dueReviews').textContent = expressionCards.length;
   renderCourse();
   if (db) {
     try { $('audioCount').textContent = (await dbAll()).length; } catch (_) {}
@@ -470,9 +539,10 @@ async function openSession(id) {
   $('sessionTitle').textContent = currentSession.theme;
   $('sessionDesc').textContent = currentSession.focus;
   const specialQuestionCount = currentSession.specials.reduce((total, special) => total + (special.questions?.length || 1), 0);
+  const strategyCount = strategyConfigs(currentSession).length;
   $('sessionChips').innerHTML = currentSession.mock5
     ? `<span class="chip">모의고사</span><span class="chip">실전 구간 + 약점 보강</span><span class="chip">총 ${currentTasks.length}문항</span>`
-    : `<span class="chip">${esc(displayMode(currentSession))}</span><span class="chip">일반 질문 3개</span><span class="chip">특수 질문 ${specialQuestionCount}개</span><span class="chip">복습 ${currentSession.kind === 'weekday' ? 1 : 3}문제</span>`;
+    : `<span class="chip">${esc(displayMode(currentSession))}</span><span class="chip">일반 질문 3개</span><span class="chip">전략 강화 ${strategyCount}문제</span><span class="chip">특수 질문 ${specialQuestionCount}개</span>`;
   $('mockBanner').classList.add('hidden');
   renderTaskNav();
   await loadTask(0);
@@ -505,14 +575,14 @@ $('navLeft').addEventListener('click', () => $('taskNav').scrollBy({ left: -240,
 $('navRight').addEventListener('click', () => $('taskNav').scrollBy({ left: 240, behavior: 'smooth' }));
 
 function taskTypeName(task) {
-  if (task.isReview) return `지연 복습 · ${taskTypeName({ ...task, isReview: false })}`;
   const base = {
     interview: '인터뷰',
     listening: task.questionRole === 'main' ? '듣고 요약' : '듣기 후속 질문',
     situation: '상황형 질문',
     visual: task.kind === 'photo' ? '사진·그림' : task.kind === 'product' ? '제품 이미지' : '시각자료'
   }[task.type] || '훈련';
-  return task.officialTask ? `Task ${task.officialTask} · ${base}` : base;
+  if (task.officialTask) return `Task ${task.officialTask} · ${base}`;
+  return task.phase === 'strategy' ? `전략 강화 · ${base}` : base;
 }
 
 function renderChecks() {
@@ -534,6 +604,9 @@ function fullQuestion(task) {
 }
 
 async function loadTask(index) {
+  const previousTask = currentTasks[currentTaskIndex] || null;
+  const nextTask = currentTasks[index];
+  const sameVisualGroup = !!(previousTask?.visualGroupId && nextTask?.visualGroupId && previousTask.visualGroupId === nextTask.visualGroupId);
   stopAllSpeech();
   stopLiveResources();
   clearReveal();
@@ -555,8 +628,9 @@ async function loadTask(index) {
   $('answerStage').classList.remove('hidden');
   $('evaluationStage').classList.add('hidden');
   $('mockBanner').classList.toggle('hidden', !(currentSession?.mock5 && task.phase === 'mock'));
-  $('taskType').textContent = `${taskTypeName(task)} · ${index + 1}/${currentTasks.length}`;
-  $('taskTitle').textContent = task.title;
+  const visualStep = task.visualGroupId ? ` · 자료 질문 ${Number(task.visualQuestionIndex) + 1}/${task.visualQuestionCount}` : '';
+  $('taskType').textContent = `${taskTypeName(task)}${visualStep} · ${index + 1}/${currentTasks.length}`;
+  $('taskTitle').textContent = task.visualGroupId ? (task.visualTitle || task.title.split(' · ')[0]) : task.title;
   $('taskGuide').textContent = task.guide || '';
   $('questionDisplay').className = 'question-hidden';
   $('questionDisplay').textContent = task.type === 'listening' && task.allowListen ? '지문을 들은 뒤 질문을 확인하세요.' : '먼저 ‘질문 보기·듣기’를 누르세요.';
@@ -570,7 +644,7 @@ async function loadTask(index) {
   $('recordTimer').textContent = '00:00';
   $('micHelp').classList.add('hidden');
 
-  renderVisual(task);
+  renderVisual(task, sameVisualGroup);
   renderListen(task);
   renderScenario(task);
   renderChecks();
@@ -589,25 +663,36 @@ async function loadTask(index) {
   document.querySelectorAll('#rating button').forEach(button => button.classList.toggle('selected', Number(button.dataset.rate) === currentRating));
   document.querySelectorAll('#outcome button').forEach(button => button.classList.toggle('selected', button.dataset.outcome === currentOutcome));
   $('taskPromptArea').classList.add('hidden');
+  resetExpressionCapture(task);
   setTake('first');
   await loadTakes(task);
   $('revealRule').textContent = `현재 문제 표시시간: ${effectiveRevealSec(task)}초 · 다시보기 동일 · 1회 가능`;
   renderTaskNav();
   syncMobileActionBar();
-  window.scrollTo({ top: Math.max(0, $('practiceArea').offsetTop - 8), behavior: 'smooth' });
+  const scrollTarget = sameVisualGroup ? $('questionShell') : $('practiceArea');
+  window.scrollTo({ top: Math.max(0, scrollTarget.offsetTop - 12), behavior: 'smooth' });
 }
 
 function renderScenario(task) {
   $('scenarioArea').innerHTML = task.type === 'situation' ? '<div class="notice">상황 설명은 질문과 함께 표시되고 설정 시간 뒤 가려집니다.</div>' : '';
 }
 
-function renderVisual(task) {
+function renderVisual(task, preserveExisting = false) {
   const area = $('visualArea');
   if (task.type !== 'visual') {
     area.innerHTML = '';
+    area.dataset.visualGroup = '';
     return;
   }
-  area.innerHTML = `<div class="visual-wrap"><h3>${esc(task.title)}</h3>${visualHTML(task)}</div>`;
+  const groupId = task.visualGroupId || task.id;
+  if (preserveExisting && area.dataset.visualGroup === groupId && area.firstElementChild) {
+    const badge = area.querySelector('.visual-set-badge');
+    if (badge) badge.textContent = `자료 세트 · 질문 ${Number(task.visualQuestionIndex) + 1}/${task.visualQuestionCount}`;
+    return;
+  }
+  const badge = task.visualGroupId ? `<span class="visual-set-badge">자료 세트 · 질문 ${Number(task.visualQuestionIndex) + 1}/${task.visualQuestionCount}</span>` : '';
+  area.dataset.visualGroup = groupId;
+  area.innerHTML = `<div class="visual-wrap"><div class="visual-heading"><h3>${esc(task.visualTitle || task.title)}</h3>${badge}</div>${visualHTML(task)}</div>`;
 }
 function visualHTML(v){if(v.kind==='bar')return barSVG(v);if(v.kind==='line')return lineSVG(v);if(v.kind==='pie')return pieSVG(v);if(v.kind==='table')return `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${v.headers.map(h=>`<th style="border:1px solid #d0d5dd;padding:8px;background:#f2f4f7">${esc(h)}</th>`).join('')}</tr></thead><tbody>${v.rows.map(r=>`<tr>${r.map(c=>`<td style="border:1px solid #d0d5dd;padding:8px;text-align:center">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;if(v.kind==='photo')return `<figure class="photo-frame"><img class="photo-image" src="${esc(v.image||'')}" alt="${esc(v.title||'Photo description practice image')}" loading="lazy" decoding="async" /></figure>`;if(v.kind==='product')return `<div class="product-card"><div class="product-icon">${productIcon(v.title)}</div><div><h2 style="margin:0 0 8px">${esc(v.title)}</h2><div class="feature-list">${v.features.map(f=>`<div class="feature">✓ ${esc(f)}</div>`).join('')}</div></div></div>`;return ''}
 function productIcon(title){if(title.includes('sensor'))return'📡';if(title.includes('cabin'))return'🚘';if(title.includes('app'))return'📱';if(title.includes('charger'))return'🔌';return'📊'}
@@ -1191,51 +1276,6 @@ function saveDraft() {
   return true;
 }
 
-function scheduleQuality(record) {
-  return ['fail', 'partial', 'success'].includes(record.outcome) ? record.outcome : 'partial';
-}
-
-function updateReviewSchedule(task, record) {
-  if (!record.outcome) return;
-  const source = task.source;
-  const order = currentSession.order;
-  const attemptKey = `${currentSession.id}:${task.id}`;
-  const old = state.reviewMeta[source] || { source, streak: 0, attempts: 0, lastOrder: 0, nextDueOrder: order + 1, needsReview: true };
-  const quality = scheduleQuality(record);
-  const isNew = old.lastAttemptKey !== attemptKey;
-  const base = isNew ? old.streak : (old.streakBeforeAttempt ?? old.streak);
-  let streak = base;
-  let interval = 1;
-  if (quality === 'fail') {
-    streak = 0;
-    interval = 1;
-  } else if (quality === 'partial') {
-    interval = record.retry || (record.rating && record.rating <= 2) ? 1 : (record.replayUsed ? 2 : 3);
-  } else {
-    streak = base + 1;
-    interval = [0, 3, 7, 14, 21][Math.min(streak, 4)];
-    if (record.replayUsed) interval = Math.max(2, Math.round(interval * 0.75));
-    if (record.rating && record.rating <= 3) interval = Math.max(2, Math.round(interval * 0.85));
-  }
-  state.reviewMeta[source] = {
-    ...old,
-    source,
-    attempts: old.attempts + (isNew ? 1 : 0),
-    streakBeforeAttempt: isNew ? old.streak : old.streakBeforeAttempt,
-    streak,
-    lastOrder: order,
-    nextDueOrder: order + interval,
-    lastQuality: quality,
-    needsReview: quality !== 'success' || record.retry,
-    lastAttemptKey: attemptKey,
-    lastRating: record.rating || 0,
-    lastOutcome: record.outcome
-  };
-  if (quality === 'success' && !record.retry) {
-    for (const existing of Object.values(state.records)) if (existing.source === source) existing.retry = false;
-  }
-}
-
 function saveCurrent(showMessage = true) {
   if (!currentOutcome) {
     if (showMessage) alert('실패·부분 성공·성공 중 하나를 선택해 주세요.');
@@ -1261,10 +1301,9 @@ function saveCurrent(showMessage = true) {
     savedAt: new Date().toISOString()
   });
   markSessionStarted();
-  updateReviewSchedule(task, record);
   saveState();
   renderTaskNav();
-  if (showMessage) toast('평가와 복습 일정이 저장되었습니다.');
+  if (showMessage) toast('평가가 저장되었습니다.');
   return true;
 }
 
@@ -1395,17 +1434,263 @@ function toast(message) {
   setTimeout(() => element.remove(), 1700);
 }
 
+function normalizeExpression(value = '') {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function nextExpressionCardId() {
+  return `expr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function expressionMeta(cardId) {
+  return expressionReview[cardId] || { streak: 0, nextDueAt: 0, lastResult: '', lastReviewedAt: '' };
+}
+
+function isExpressionDue(cardId, now = Date.now()) {
+  const meta = expressionMeta(cardId);
+  return !meta.nextDueAt || meta.nextDueAt <= now;
+}
+
+function expressionStatus(cardId) {
+  const meta = expressionMeta(cardId);
+  return meta.streak >= 3 ? '익숙해짐' : '익히는 중';
+}
+
+function resetExpressionCapture(task) {
+  const select = $('expressionCategory');
+  if (select) {
+    select.innerHTML = EXPRESSION_CATEGORIES.map(category => `<option value="${esc(category)}">${esc(category)}</option>`).join('');
+    select.value = task?.expressions?.[0]?.category || (task?.strategyArea === '듣기 요약' ? '요약' : task?.type === 'visual' ? (task.kind === 'photo' ? '사진 묘사' : '그래프 비교') : task?.type === 'situation' ? '문제 해결' : '기타');
+  }
+  if ($('expressionText')) $('expressionText').value = '';
+  if ($('expressionCue')) $('expressionCue').value = '';
+  if ($('expressionExample')) $('expressionExample').value = '';
+  if ($('expressionSaveStatus')) $('expressionSaveStatus').textContent = '';
+  const suggestions = $('expressionSuggestions');
+  if (!suggestions) return;
+  const items = Array.isArray(task?.expressions) ? task.expressions : [];
+  suggestions.innerHTML = items.length
+    ? `<span class="expression-suggestion-label">활용 가능한 표현</span>${items.map((item, index) => `<button class="expression-suggestion" data-expression-suggestion="${index}" type="button">${esc(item.text)}</button>`).join('')}`
+    : '<span class="listen-status">이번 답변에서 다시 쓰고 싶은 표현을 직접 저장할 수 있습니다.</span>';
+  suggestions.querySelectorAll('[data-expression-suggestion]').forEach(button => {
+    button.addEventListener('click', () => {
+      const item = items[Number(button.dataset.expressionSuggestion)];
+      if (!item) return;
+      $('expressionText').value = item.text || '';
+      $('expressionCue').value = item.cue || '';
+      $('expressionCategory').value = EXPRESSION_CATEGORIES.includes(item.category) ? item.category : '기타';
+      $('expressionExample').focus();
+    });
+  });
+}
+
+function saveExpressionCardFromForm() {
+  const task = currentTasks[currentTaskIndex];
+  const expression = $('expressionText').value.trim();
+  const cue = $('expressionCue').value.trim();
+  const example = $('expressionExample').value.trim();
+  const category = $('expressionCategory').value || '기타';
+  if (!expression) {
+    $('expressionSaveStatus').textContent = '기억할 표현을 먼저 입력하세요.';
+    $('expressionText').focus();
+    return;
+  }
+  if (expression.length > 110 && !confirm('표현이 조금 깁니다. 문장 전체보다 재사용 가능한 짧은 덩어리로 줄이는 편이 좋습니다. 그대로 저장할까요?')) return;
+  const duplicate = expressionCards.find(card => normalizeExpression(card.expression) === normalizeExpression(expression));
+  const now = new Date().toISOString();
+  if (duplicate) {
+    if (!confirm('이미 저장된 표현입니다. 기존 카드에 이번 단서와 예문을 반영할까요?')) return;
+    duplicate.cue = cue || duplicate.cue;
+    duplicate.example = example || duplicate.example;
+    duplicate.category = category || duplicate.category;
+    duplicate.updatedAt = now;
+    duplicate.sourceTaskId = task?.id || duplicate.sourceTaskId;
+    duplicate.sourceSessionId = currentSession?.id || duplicate.sourceSessionId;
+    duplicate.sourceTitle = task?.title || duplicate.sourceTitle;
+    $('expressionSaveStatus').textContent = '기존 표현 카드를 업데이트했습니다.';
+  } else {
+    const card = {
+      id: nextExpressionCardId(),
+      expression,
+      cue: cue || '영어 표현을 떠올려 보세요.',
+      example,
+      category,
+      sourceTaskId: task?.id || '',
+      sourceSessionId: currentSession?.id || '',
+      sourceTitle: task?.title || '',
+      createdAt: now,
+      updatedAt: now
+    };
+    expressionCards.push(card);
+    expressionReview[card.id] = { streak: 0, nextDueAt: 0, lastResult: '', lastReviewedAt: '' };
+    $('expressionSaveStatus').textContent = '표현 카드에 저장했습니다.';
+  }
+  saveExpressionData();
+}
+
+$('saveExpression')?.addEventListener('click', saveExpressionCardFromForm);
+
+function formatReviewDate(timestamp) {
+  if (!timestamp) return '지금';
+  const date = new Date(timestamp);
+  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+}
+
+function renderExpressionHub() {
+  const now = Date.now();
+  const due = expressionCards.filter(card => isExpressionDue(card.id, now));
+  const learning = expressionCards.filter(card => expressionStatus(card.id) === '익히는 중').length;
+  const mastered = expressionCards.length - learning;
+  $('expressionDueCount').textContent = due.length;
+  $('expressionTotalCount').textContent = expressionCards.length;
+  $('expressionLearningCount').textContent = learning;
+  $('expressionMasteredCount').textContent = mastered;
+  $('expressionDueMessage').textContent = expressionCards.length
+    ? (due.length ? '한국어 단서를 보고 영어 표현을 먼저 소리 내어 말해보세요.' : '오늘 복습은 끝났습니다. 저장한 표현은 기능별로 다시 볼 수 있어요.')
+    : '새 문제를 풀고 재사용할 표현을 저장해보세요.';
+  $('startExpressionReview').disabled = due.length === 0;
+
+  const categories = ['전체', ...EXPRESSION_CATEGORIES.filter(category => expressionCards.some(card => card.category === category))];
+  $('expressionCategoryFilter').innerHTML = categories.map(category => `<button class="expression-filter${expressionFilter === category ? ' active' : ''}" data-expression-filter="${esc(category)}" type="button">${esc(category)}</button>`).join('');
+  $('expressionCategoryFilter').querySelectorAll('[data-expression-filter]').forEach(button => button.addEventListener('click', () => {
+    expressionFilter = button.dataset.expressionFilter;
+    renderExpressionHub();
+  }));
+
+  const filtered = expressionCards
+    .filter(card => expressionFilter === '전체' || card.category === expressionFilter)
+    .sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
+  const root = $('expressionCardList');
+  if (!filtered.length) {
+    root.innerHTML = `<div class="empty expression-empty">${expressionCards.length ? '이 기능으로 저장한 표현이 없습니다.' : '아직 저장한 표현이 없습니다.'}</div>`;
+    return;
+  }
+  root.innerHTML = filtered.map(card => {
+    const meta = expressionMeta(card.id);
+    return `<article class="expression-card">
+      <div class="expression-card-head"><span class="chip">${esc(card.category || '기타')}</span><span class="expression-status">${expressionStatus(card.id)}</span></div>
+      <h3 lang="en">${esc(card.expression)}</h3>
+      <p class="expression-cue">${esc(card.cue || '회상 단서 없음')}</p>
+      ${card.example ? `<p class="expression-example" lang="en">${esc(card.example)}</p>` : ''}
+      <div class="expression-card-meta"><span>다음 복습 ${formatReviewDate(meta.nextDueAt)}</span>${card.sourceTitle ? `<span>출처 ${esc(card.sourceTitle)}</span>` : ''}</div>
+      <div class="btnrow expression-card-actions">
+        <button class="btn secondary small" data-expression-edit="${card.id}" type="button">수정</button>
+        <button class="btn secondary small" data-expression-reset="${card.id}" type="button">다시 복습</button>
+        <button class="btn danger small" data-expression-delete="${card.id}" type="button">삭제</button>
+      </div>
+    </article>`;
+  }).join('');
+  root.querySelectorAll('[data-expression-edit]').forEach(button => button.addEventListener('click', () => editExpressionCard(button.dataset.expressionEdit)));
+  root.querySelectorAll('[data-expression-reset]').forEach(button => button.addEventListener('click', () => resetExpressionReview(button.dataset.expressionReset)));
+  root.querySelectorAll('[data-expression-delete]').forEach(button => button.addEventListener('click', () => deleteExpressionCard(button.dataset.expressionDelete)));
+}
+
+function editExpressionCard(cardId) {
+  const card = expressionCards.find(item => item.id === cardId);
+  if (!card) return;
+  const expression = prompt('기억할 표현', card.expression);
+  if (expression === null || !expression.trim()) return;
+  const cue = prompt('한국어 회상 단서', card.cue || '');
+  if (cue === null) return;
+  const example = prompt('내 예문', card.example || '');
+  if (example === null) return;
+  const category = prompt(`말하기 기능\n${EXPRESSION_CATEGORIES.join(' / ')}`, card.category || '기타');
+  if (category === null) return;
+  card.expression = expression.trim();
+  card.cue = cue.trim();
+  card.example = example.trim();
+  card.category = EXPRESSION_CATEGORIES.includes(category.trim()) ? category.trim() : '기타';
+  card.updatedAt = new Date().toISOString();
+  saveExpressionData();
+  renderExpressionHub();
+}
+
+function resetExpressionReview(cardId) {
+  expressionReview[cardId] = { ...expressionMeta(cardId), streak: 0, nextDueAt: 0, lastResult: 'reset' };
+  saveExpressionData();
+  renderExpressionHub();
+}
+
+function deleteExpressionCard(cardId) {
+  const card = expressionCards.find(item => item.id === cardId);
+  if (!card || !confirm(`“${card.expression}” 표현 카드를 삭제할까요?`)) return;
+  expressionCards = expressionCards.filter(item => item.id !== cardId);
+  delete expressionReview[cardId];
+  saveExpressionData();
+  renderExpressionHub();
+}
+
+function startExpressionReview() {
+  expressionReviewQueue = expressionCards.filter(card => isExpressionDue(card.id)).sort((a, b) => (expressionMeta(a.id).nextDueAt || 0) - (expressionMeta(b.id).nextDueAt || 0));
+  expressionReviewIndex = 0;
+  if (!expressionReviewQueue.length) return;
+  $('expressionReviewPanel').classList.remove('hidden');
+  showExpressionReviewCard();
+  $('expressionReviewPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showExpressionReviewCard() {
+  const card = expressionReviewQueue[expressionReviewIndex];
+  if (!card) {
+    $('expressionReviewPanel').classList.add('hidden');
+    toast('오늘의 표현 복습을 마쳤습니다.');
+    renderExpressionHub();
+    return;
+  }
+  $('expressionReviewProgress').textContent = `${expressionReviewIndex + 1}/${expressionReviewQueue.length}`;
+  $('expressionReviewCategory').textContent = card.category || '기타';
+  $('expressionReviewCue').textContent = card.cue || '영어 표현을 떠올려 보세요.';
+  $('expressionReviewText').textContent = card.expression;
+  $('expressionReviewExample').textContent = card.example || '';
+  $('expressionReviewAnswer').classList.add('hidden');
+  $('revealExpressionAnswer').classList.remove('hidden');
+  $('revealExpressionAnswer').focus();
+}
+
+function rateExpression(result) {
+  const card = expressionReviewQueue[expressionReviewIndex];
+  if (!card) return;
+  const old = expressionMeta(card.id);
+  let streak = old.streak || 0;
+  let days = 1;
+  if (result === 'again') {
+    streak = 0;
+    days = 1;
+  } else if (result === 'assisted') {
+    streak = Math.max(0, streak);
+    days = streak >= 2 ? 3 : 2;
+  } else {
+    streak += 1;
+    days = [0, 3, 7, 14, 30, 60][Math.min(streak, 5)];
+  }
+  expressionReview[card.id] = {
+    streak,
+    nextDueAt: Date.now() + days * 24 * 60 * 60 * 1000,
+    lastResult: result,
+    lastReviewedAt: new Date().toISOString()
+  };
+  saveExpressionData();
+  expressionReviewIndex += 1;
+  showExpressionReviewCard();
+}
+
+$('startExpressionReview')?.addEventListener('click', startExpressionReview);
+$('revealExpressionAnswer')?.addEventListener('click', () => {
+  $('expressionReviewAnswer').classList.remove('hidden');
+  $('revealExpressionAnswer').classList.add('hidden');
+});
+document.querySelectorAll('[data-expression-rate]').forEach(button => button.addEventListener('click', () => rateExpression(button.dataset.expressionRate)));
+$('closeExpressionReview')?.addEventListener('click', () => $('expressionReviewPanel').classList.add('hidden'));
+
 function renderRecords() {
+  renderExpressionHub();
   const root = $('recordList');
   const records = Object.values(state.records).sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
   if (!records.length) {
-    root.innerHTML = '<div class="card empty">아직 저장된 답변이 없습니다.</div>';
+    root.innerHTML = '<div class="empty">아직 저장된 답변이 없습니다.</div>';
     return;
   }
-  root.innerHTML = records.map(record => {
-    const meta = state.reviewMeta[record.source];
-    return `<div class="record-item"><div class="task-type">WEEK ${record.week} · ${esc(record.label)} · ${esc(record.type)}</div><h4>${esc(record.title)}</h4><p>${esc(record.question)}</p>${record.transcript ? `<div class="transcript">${esc(record.transcript)}</div>` : '<p>받아쓰기 없음</p>'}<div class="chips"><span class="chip">결과 ${record.outcome === 'success' ? '성공' : record.outcome === 'partial' ? '부분 성공' : record.outcome === 'fail' ? '실패' : '-'}</span><span class="chip">체감 ${record.rating || '-'}/5</span>${record.takes?.first ? '<span class="chip">1차 녹음</span>' : ''}${record.takes?.retry ? '<span class="chip">재도전 녹음</span>' : ''}${record.retry ? '<span class="chip" style="color:var(--danger)">재연습 필요</span>' : ''}${meta ? `<span class="chip">다음 복습 ${meta.nextDueOrder}회차</span>` : ''}</div><div class="btnrow" style="margin-top:9px"><button class="btn secondary small" data-open="${record.sessionId}" type="button">회차 열기</button><button class="btn danger small" data-del="${record.id}" type="button">기록 삭제</button></div></div>`;
-  }).join('');
+  root.innerHTML = records.map(record => `<div class="record-item"><div class="task-type">WEEK ${record.week} · ${esc(record.label)} · ${esc(record.type)}</div><h4>${esc(record.title)}</h4><p>${esc(record.question)}</p>${record.transcript ? `<div class="transcript">${esc(record.transcript)}</div>` : '<p>받아쓰기 없음</p>'}<div class="chips"><span class="chip">결과 ${record.outcome === 'success' ? '성공' : record.outcome === 'partial' ? '부분 성공' : record.outcome === 'fail' ? '실패' : '-'}</span><span class="chip">체감 ${record.rating || '-'}/5</span>${record.takes?.first ? '<span class="chip">1차 녹음</span>' : ''}${record.takes?.retry ? '<span class="chip">재도전 녹음</span>' : ''}${record.retry ? '<span class="chip" style="color:var(--danger)">기록에서 다시 확인</span>' : ''}</div><div class="btnrow" style="margin-top:9px"><button class="btn secondary small" data-open="${record.sessionId}" type="button">회차 열기</button><button class="btn danger small" data-del="${record.id}" type="button">기록 삭제</button></div></div>`).join('');
   root.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => openSession(button.dataset.open)));
   root.querySelectorAll('[data-del]').forEach(button => button.addEventListener('click', async () => {
     if (!confirm('텍스트 기록과 이 문제의 녹음을 모두 삭제할까요?')) return;
@@ -1417,13 +1702,13 @@ function renderRecords() {
     renderStorageStats();
   }));
 }
-$('clearFilter').addEventListener('click', renderRecords);
+$('clearFilter').addEventListener('click', () => { expressionFilter = '전체'; renderExpressionHub(); });
 
 function syncSettings() {
   $('revealSec').value = state.settings.revealSec;
   $('ttsRate').value = String(state.settings.ttsRate);
   $('speakQuestion').checked = state.settings.speakQuestion;
-  updateTheme();
+  updateTheme(preferredTheme());
   refreshVoices();
 }
 
@@ -1434,15 +1719,22 @@ $('revealSec').addEventListener('change', event => {
 });
 $('ttsRate').addEventListener('change', event => { state.settings.ttsRate = Number(event.target.value); saveState(); });
 $('speakQuestion').addEventListener('change', event => { state.settings.speakQuestion = event.target.checked; saveState(); });
-$('darkMode').addEventListener('change', event => { state.settings.darkMode = event.target.checked; updateTheme(); saveState(); });
+$('darkMode')?.addEventListener('change', event => { const theme = event.target.checked ? 'dark' : 'light'; localStorage.setItem(THEME_KEY, theme); updateTheme(theme, true); });
 $('questionVoice').addEventListener('change', event => { state.settings.questionVoice = event.target.value; saveState(); });
 $('passageVoice').addEventListener('change', event => { state.settings.passageVoice = event.target.value; saveState(); });
 $('sampleQuestionVoice').addEventListener('click', () => speakText('This is the question voice.', 'question'));
 $('samplePassageVoice').addEventListener('click', () => speakText('This is the listening passage voice.', 'passage', syncPassageControls));
 
 function exportJSON() {
-  const payload = { ...state, exportedAt: new Date().toISOString(), note: '텍스트·복습 기록 백업입니다. 녹음까지 함께 보관하려면 전체 ZIP 백업을 사용하세요.' };
-  downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), 'spa45_records.json');
+  const payload = {
+    format: 'spa45-records-v3',
+    exportedAt: new Date().toISOString(),
+    state,
+    expressionCards,
+    expressionReview,
+    note: '텍스트 기록과 표현 카드를 포함한 백업입니다. 녹음까지 함께 보관하려면 전체 ZIP 백업을 사용하세요.'
+  };
+  downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), 'spa45_records_and_expressions.json');
 }
 
 function downloadBlob(blob, name) {
@@ -1459,17 +1751,21 @@ $('importData').addEventListener('change', async event => {
   if (!file) return;
   try {
     const imported = JSON.parse(await file.text());
-    if (!confirm('가져온 JSON 기록으로 현재 텍스트 기록을 교체할까요?')) return;
+    if (!confirm('가져온 JSON 기록과 표현 카드로 현재 데이터를 교체할까요?')) return;
+    const importedState = imported.state || imported;
     state = {
       ...clone(defaultState),
-      ...imported,
-      settings: { ...defaultState.settings, ...(imported.settings || {}) },
-      records: imported.records || {},
-      reviewMeta: imported.reviewMeta || {},
-      completed: imported.completed || {},
-      startedSessions: imported.startedSessions || {},
-      sessionHistory: imported.sessionHistory || {}
+      ...importedState,
+      settings: { ...defaultState.settings, ...(importedState.settings || {}) },
+      records: importedState.records || {},
+      reviewMeta: importedState.reviewMeta || {},
+      completed: importedState.completed || {},
+      startedSessions: importedState.startedSessions || {},
+      sessionHistory: importedState.sessionHistory || {}
     };
+    if (Array.isArray(imported.expressionCards)) expressionCards = imported.expressionCards;
+    if (imported.expressionReview && typeof imported.expressionReview === 'object') expressionReview = imported.expressionReview;
+    saveExpressionData();
     saveState();
     syncSettings();
     renderRecords();
@@ -1498,7 +1794,7 @@ async function exportAudioZip() {
   const clips = await dbAll();
   const zip = new JSZip();
   const manifest = { format: 'spa45-backup', version: 1, createdAt: new Date().toISOString(), clipCount: clips.length, entries: [] };
-  zip.file('records.json', JSON.stringify({ ...state, exportedAt: manifest.createdAt }, null, 2));
+  zip.file('records.json', JSON.stringify({ format: 'spa45-records-v3', exportedAt: manifest.createdAt, state, expressionCards, expressionReview }, null, 2));
   for (const clip of clips) {
     const file = safeAudioName(clip);
     const data = new Uint8Array(await clip.blob.arrayBuffer());
@@ -1543,7 +1839,8 @@ async function importAudioZip(file) {
     if (!manifestFile || !recordsFile) throw new Error('manifest.json 또는 records.json이 없습니다.');
     const manifest = JSON.parse(await manifestFile.async('text'));
     if (manifest.format !== 'spa45-backup' || !Array.isArray(manifest.entries)) throw new Error('지원하지 않는 백업 형식입니다.');
-    const nextState = JSON.parse(await recordsFile.async('text'));
+    const importedBundle = JSON.parse(await recordsFile.async('text'));
+    const nextState = importedBundle.state || importedBundle;
     const restored = [];
     for (const entry of manifest.entries) {
       const archived = zip.file(entry.file);
@@ -1567,6 +1864,9 @@ async function importAudioZip(file) {
       startedSessions: nextState.startedSessions || {},
       sessionHistory: nextState.sessionHistory || {}
     };
+    if (Array.isArray(importedBundle.expressionCards)) expressionCards = importedBundle.expressionCards;
+    if (importedBundle.expressionReview && typeof importedBundle.expressionReview === 'object') expressionReview = importedBundle.expressionReview;
+    saveExpressionData();
     saveState();
     syncSettings();
     renderRecords();
@@ -1645,8 +1945,12 @@ $('resetData').addEventListener('click', async () => {
   if ($('resetData').disabled) return;
   if (!confirm('정말로 모든 텍스트 기록과 녹음을 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return;
   localStorage.removeItem(STORE_KEY);
+  localStorage.removeItem(EXPRESSION_CARDS_KEY);
+  localStorage.removeItem(EXPRESSION_REVIEW_KEY);
   await dbClear();
   state = clone(defaultState);
+  expressionCards = [];
+  expressionReview = {};
   saveState();
   syncSettings();
   $('resetPhrase').value = '';
@@ -1666,8 +1970,10 @@ window.addEventListener('beforeunload', () => {
 });
 
 (async function boot() {
+  updateTheme(preferredTheme());
   renderCourse();
   syncSettings();
+  renderRecords();
   renderChecks();
   if (typeof JSZip === 'undefined') console.warn('JSZip missing');
   await initDB();

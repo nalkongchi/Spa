@@ -3384,3 +3384,366 @@ const WARMUP_BANK = [
   "What is one thing you are looking forward to?",
   "Describe a typical weekday in your life."
 ];
+
+/* Fixed strategy-strengthening questions. One is assigned to every non-mock session. */
+const STRATEGY_TASKS = {
+  "w1-d1": [{
+    "type": "interview",
+    "title": "자기소개 · 기본 정보",
+    "question": "Please introduce yourself and briefly explain where you work.",
+    "guide": "이름과 소속을 짧고 자연스럽게 말하세요.",
+    "strategyArea": "자기소개",
+    "expressions": [
+      {"text":"Thank you for giving me this opportunity.","cue":"기회를 주셔서 감사하다고 인사할 때","category":"자기소개"},
+      {"text":"I work in the automotive industry, focusing on ___.","cue":"소속 산업과 담당 분야를 소개할 때","category":"자기소개"}
+    ]
+  }],
+  "w1-d2": [{
+    "type": "interview",
+    "title": "자기소개 · 주요 업무",
+    "question": "What are your main responsibilities at work?",
+    "guide": "복잡한 기술용어보다 핵심 역할을 쉬운 말로 설명하세요.",
+    "strategyArea": "자기소개",
+    "expressions": [
+      {"text":"My main responsibility is to test and measure vehicle noise.","cue":"주요 업무를 설명할 때","category":"자기소개"},
+      {"text":"to ensure product quality","cue":"제품 품질을 확보하기 위해","category":"이유 설명"}
+    ]
+  }],
+  "w1-d3": [{
+    "type": "interview",
+    "title": "업무와 기술 · 효율성",
+    "question": "What digital tool or smart device do you use most often at work, and how does it help you?",
+    "guide": "도구 이름보다 시간 절약과 업무 효율성에 초점을 맞추세요.",
+    "strategyArea": "업무·기술",
+    "expressions": [
+      {"text":"improve work efficiency","cue":"업무 효율을 높이다","category":"장점 설명"},
+      {"text":"save time and energy","cue":"시간과 에너지를 절약하다","category":"장점 설명"},
+      {"text":"Using smart devices can improve work efficiency.","cue":"스마트 기기의 장점을 말할 때","category":"이유 설명"}
+    ]
+  }],
+  "w1-d4": [{
+    "type": "interview",
+    "title": "자기소개 · 강점과 취미",
+    "question": "What personal strength helps you at work, and what do you enjoy doing in your free time?",
+    "guide": "업무 강점 하나와 인간적인 취미 하나를 연결하세요.",
+    "strategyArea": "자기소개",
+    "expressions": [
+      {"text":"People say I am a well-organized person.","cue":"정리정돈을 잘하는 강점을 말할 때","category":"자기소개"},
+      {"text":"In my free time, I enjoy ___.","cue":"취미를 소개할 때","category":"자기소개"}
+    ]
+  }],
+  "w1-d5": [{
+    "type": "interview",
+    "title": "일상과 취미 · 스트레스 해소",
+    "question": "What do you usually do to relieve stress after a busy week?",
+    "guide": "활동 하나를 말하고 왜 도움이 되는지 덧붙이세요.",
+    "strategyArea": "일상·취미·여행",
+    "expressions": [
+      {"text":"relieve stress","cue":"스트레스를 해소하다","category":"이유 설명"},
+      {"text":"recharge my batteries","cue":"에너지를 다시 충전하다","category":"이유 설명"},
+      {"text":"It is a great way to relieve stress after a busy week.","cue":"취미의 효과를 설명할 때","category":"장점 설명"}
+    ]
+  }],
+  "w1-e1": [{
+    "type": "interview",
+    "title": "자기소개 · 전체 답변",
+    "question": "Please give a complete self-introduction as if you were beginning the SPA interview.",
+    "guide": "기본 정보, 업무, 강점이나 취미, 마무리를 45~60초로 연결하세요.",
+    "strategyArea": "자기소개",
+    "expressions": [
+      {"text":"Today, I am excited to be here, and I will do my best.","cue":"자기소개를 긍정적으로 마무리할 때","category":"자기소개"},
+      {"text":"I recently went on business trips to the U.S. and Mexico for vehicle testing.","cue":"해외 출장 경험을 소개할 때","category":"경험 이야기"}
+    ]
+  }],
+
+  "w2-d1": [{
+    "type": "situation",
+    "title": "가정 상황 · 동료의 반대",
+    "scenario": "A coworker strongly disagrees with your idea during a team discussion.",
+    "question": "If you were in this situation, what would you do first, and how would you reach an agreement?",
+    "guide": "첫 행동, 이유, 다음 조치를 순서대로 말하세요.",
+    "strategyArea": "가정 상황",
+    "expressions": [
+      {"text":"If I were in that situation, I would ___.","cue":"가정 상황에서 첫 행동을 말할 때","category":"가정 상황"},
+      {"text":"listen to the other person's point of view","cue":"상대방의 관점을 듣다","category":"문제 해결"},
+      {"text":"find a solution that works for both sides","cue":"양쪽 모두에게 맞는 해결책을 찾다","category":"문제 해결"}
+    ]
+  }],
+  "w2-d2": [{
+    "type": "situation",
+    "title": "가정 상황 · 일정 변경",
+    "scenario": "An important project deadline is suddenly moved forward by one week.",
+    "question": "If you were responsible for the schedule, how would you reorganize the work?",
+    "guide": "우선순위 조정, 소통, 시간 절약 방안을 말하세요.",
+    "strategyArea": "가정 상황",
+    "expressions": [
+      {"text":"First, I would focus on finding the best solution.","cue":"먼저 최선의 해결책을 찾겠다고 말할 때","category":"가정 상황"},
+      {"text":"reorganize the priorities","cue":"우선순위를 다시 정리하다","category":"문제 해결"},
+      {"text":"This would help us save time.","cue":"시간 절약 효과를 설명할 때","category":"이유 설명"}
+    ]
+  }],
+  "w2-d3": [{
+    "type": "interview",
+    "title": "운동과 건강 · 운동 습관",
+    "question": "What kind of exercise do you usually do, and how often do you do it?",
+    "guide": "운동 종류, 빈도, 꾸준히 하는 이유를 말하세요.",
+    "strategyArea": "운동·건강",
+    "expressions": [
+      {"text":"stay in shape","cue":"체력을 관리하고 건강을 유지하다","category":"장점 설명"},
+      {"text":"develop a regular exercise routine","cue":"규칙적인 운동 습관을 만들다","category":"습관 설명"}
+    ]
+  }],
+  "w2-d4": [{
+    "type": "situation",
+    "title": "가정 상황 · 예상 밖의 시험 결과",
+    "scenario": "A vehicle test produces an unexpected result just before the team must make a decision.",
+    "question": "If you were in charge, what would you check before making the decision?",
+    "guide": "데이터 검증, 관계자 공유, 다음 시험 순서를 제시하세요.",
+    "strategyArea": "가정 상황",
+    "expressions": [
+      {"text":"Before making a decision, I would first ___.","cue":"결정 전에 우선 확인할 일을 말할 때","category":"문제 해결"},
+      {"text":"verify the data from another source","cue":"다른 출처로 데이터를 검증하다","category":"문제 해결"}
+    ]
+  }],
+  "w2-d5": [{
+    "type": "interview",
+    "title": "업무와 기술 · 워라밸",
+    "question": "Do you think technology can help employees achieve a better work-life balance? Why or why not?",
+    "guide": "효율성의 장점과 업무 연결이 계속되는 단점을 함께 말해도 좋습니다.",
+    "strategyArea": "업무·기술",
+    "expressions": [
+      {"text":"maintain a better work-life balance","cue":"더 나은 일과 삶의 균형을 유지하다","category":"장점 설명"},
+      {"text":"Technology allows employees to work more efficiently.","cue":"기술이 효율적인 업무를 가능하게 한다고 말할 때","category":"이유 설명"}
+    ]
+  }],
+  "w2-e1": [{
+    "type": "visual-extra",
+    "attachToSpecial": "Employee working with test data",
+    "title": "사진 전략 · 전체 인상",
+    "question": "Overall, does the workplace look organized and efficient? Please support your answer with two visual details.",
+    "guide": "전체 인상을 먼저 말한 뒤 눈에 보이는 근거 두 개만 고르세요.",
+    "strategyArea": "사진 묘사",
+    "expressions": [
+      {"text":"What I can see first is ___.","cue":"사진에서 가장 먼저 보이는 것을 말할 때","category":"사진 묘사"},
+      {"text":"Overall, it looks well-organized and efficient.","cue":"사진의 전체 인상을 정리할 때","category":"사진 묘사"}
+    ]
+  }],
+
+  "w3-d1": [{
+    "type": "visual-extra",
+    "attachToSpecial": "Defects found by inspection stage",
+    "title": "그래프 전략 · 최고점과 결론",
+    "question": "Which inspection stage has the highest figure, and what should the company focus on as a result?",
+    "guide": "가장 높은 항목 하나와 실무적 결론 하나만 분명히 말하세요.",
+    "strategyArea": "그래프 설명",
+    "expressions": [
+      {"text":"___ has the highest figure.","cue":"그래프에서 가장 높은 항목을 말할 때","category":"그래프 비교"},
+      {"text":"In short, the company should focus on ___.","cue":"그래프의 결론을 말할 때","category":"결론 내리기"}
+    ]
+  }],
+  "w3-d2": [{
+    "type": "interview",
+    "title": "여행과 여가 · 재충전 경험",
+    "question": "Tell me about a trip or activity that helped you recharge and refresh your mind.",
+    "guide": "장소나 활동, 인상적인 세부내용, 이후 기분 변화를 말하세요.",
+    "strategyArea": "일상·취미·여행",
+    "expressions": [
+      {"text":"refresh my mind","cue":"기분과 머리를 새롭게 하다","category":"경험 이야기"},
+      {"text":"take a break from my daily routine","cue":"일상에서 잠시 벗어나다","category":"경험 이야기"}
+    ]
+  }],
+  "w3-d3": [{
+    "type": "situation",
+    "title": "가정 상황 · 고객 불만",
+    "scenario": "A customer is very upset about a repeated vehicle problem and demands an immediate answer.",
+    "question": "If you were the employee, how would you handle the conversation and solve the problem?",
+    "guide": "먼저 듣기, 공감하기, 확인할 내용, 후속 조치를 말하세요.",
+    "strategyArea": "가정 상황",
+    "expressions": [
+      {"text":"I would first listen carefully to the customer's concern.","cue":"고객 불만을 먼저 경청하겠다고 말할 때","category":"문제 해결"},
+      {"text":"explain the next steps clearly","cue":"다음 조치를 명확히 설명하다","category":"문제 해결"}
+    ]
+  }],
+  "w3-d4": [{
+    "type": "listening",
+    "title": "요약 전략 · 건강한 생활 습관",
+    "passage": "Many office workers sit for long periods and feel tired even when their jobs are not physically demanding. Health experts recommend taking short walking breaks, stretching regularly, and getting enough sleep. These simple habits can improve concentration, reduce stress, and support both physical and mental health. The key is to choose realistic habits that can be continued every day.",
+    "question": "Please summarize the passage by stating the topic, two main points, and the conclusion.",
+    "maxPlays": 2,
+    "guide": "주제 하나, 핵심 두 가지, 결론 하나만 기억해 3문장으로 요약하세요.",
+    "strategyArea": "듣기 요약",
+    "expressions": [
+      {"text":"This passage is mainly about ___.","cue":"요약의 주제를 선언할 때","category":"요약"},
+      {"text":"The speaker mentions two main points: ___ and ___.","cue":"핵심 두 가지를 연결할 때","category":"요약"},
+      {"text":"In conclusion, the main point is that ___.","cue":"요약의 결론을 말할 때","category":"결론 내리기"}
+    ]
+  }],
+  "w3-d5": [{
+    "type": "interview",
+    "title": "업무와 기술 · 과도한 의존",
+    "question": "What problems can occur when employees rely too much on smart devices, and how can they avoid them?",
+    "guide": "집중력 저하나 업무 경계 문제를 말하고 해결책을 제시하세요.",
+    "strategyArea": "업무·기술",
+    "expressions": [
+      {"text":"rely too much on technology","cue":"기술에 지나치게 의존하다","category":"문제 설명"},
+      {"text":"set clear boundaries between work and personal time","cue":"업무와 개인 시간의 경계를 정하다","category":"해결책 제안"}
+    ]
+  }],
+  "w3-e1": [{
+    "type": "visual-extra",
+    "attachToSpecial": "Automated production line",
+    "title": "사진 전략 · 위치와 행동",
+    "question": "What can you see on the left and right sides of the image, and how are the workers interacting with the automated equipment?",
+    "guide": "왼쪽, 오른쪽, 사람의 행동 순서로 단순하게 묘사하세요.",
+    "strategyArea": "사진 묘사",
+    "expressions": [
+      {"text":"On the left side, I can see ___.","cue":"사진 왼쪽을 묘사할 때","category":"사진 묘사"},
+      {"text":"On the right side, there is ___.","cue":"사진 오른쪽을 묘사할 때","category":"사진 묘사"}
+    ]
+  }],
+
+  "w4-d1": [{
+    "type": "interview",
+    "title": "한국문화 · 외국인에게 추천",
+    "question": "What aspect of Korean culture would you recommend to a foreign visitor, and why?",
+    "guide": "문화 한 가지를 고르고 독특함과 접근성을 설명하세요.",
+    "strategyArea": "한국문화",
+    "expressions": [
+      {"text":"I would recommend ___ to a foreign visitor.","cue":"외국인에게 한국문화를 추천할 때","category":"추천과 설득"},
+      {"text":"It is unique and easy to experience.","cue":"독특하고 경험하기 쉽다고 말할 때","category":"이유 설명"}
+    ]
+  }],
+  "w4-d2": [{
+    "type": "interview",
+    "title": "한국문화 · 세계적 인기",
+    "question": "Why do you think Korean culture has become so popular around the world?",
+    "guide": "세계적 인기의 이유를 독특함, 유행 선도, 온라인 접근성 중 두 가지로 설명하세요.",
+    "strategyArea": "한국문화",
+    "expressions": [
+      {"text":"gain huge popularity worldwide","cue":"전 세계적으로 큰 인기를 얻다","category":"장점 설명"},
+      {"text":"Korean culture is unique and trend-setting.","cue":"한국문화의 독특함과 유행 선도를 말할 때","category":"이유 설명"}
+    ]
+  }],
+  "w4-d3": [{
+    "type": "visual-extra",
+    "attachToSpecial": "Preferred commuting methods",
+    "title": "그래프 전략 · 비교와 추세",
+    "question": "Which option is the most popular, and what overall pattern can you see among the remaining options?",
+    "guide": "최고점 하나와 나머지의 전반적 차이만 말하세요.",
+    "strategyArea": "그래프 설명",
+    "expressions": [
+      {"text":"This graph shows data about ___.","cue":"그래프의 주제를 소개할 때","category":"그래프 비교"},
+      {"text":"___ is the most popular option.","cue":"가장 인기 있는 항목을 말할 때","category":"그래프 비교"}
+    ]
+  }],
+  "w4-d4": [{
+    "type": "interview",
+    "title": "운동과 건강 · 신체와 정신",
+    "question": "How does regular exercise affect people's physical and mental health?",
+    "guide": "체력, 면역력, 스트레스 중 두 가지 이상을 연결하세요.",
+    "strategyArea": "운동·건강",
+    "expressions": [
+      {"text":"boost the immune system","cue":"면역력을 높이다","category":"장점 설명"},
+      {"text":"improve physical and mental health","cue":"신체적·정신적 건강을 향상시키다","category":"장점 설명"},
+      {"text":"Regular exercise helps me stay in shape.","cue":"규칙적인 운동의 효과를 말할 때","category":"이유 설명"}
+    ]
+  }],
+  "w4-d5": [{
+    "type": "visual-extra",
+    "attachToSpecial": "Vehicle interior acoustic test",
+    "title": "사진 전략 · 전체 흐름",
+    "question": "What can you see first, and what does the overall scene suggest about the purpose of the test?",
+    "guide": "가장 먼저 보이는 것과 장면의 목적만 연결하세요.",
+    "strategyArea": "사진 묘사",
+    "expressions": [
+      {"text":"This picture was taken inside a vehicle.","cue":"차량 내부에서 찍힌 사진이라고 말할 때","category":"사진 묘사"},
+      {"text":"The overall scene suggests that ___.","cue":"사진 전체가 시사하는 점을 말할 때","category":"추측하기"}
+    ]
+  }],
+  "w4-e1": [{
+    "type": "listening",
+    "title": "요약 전략 · 여가와 여행",
+    "passage": "A company encouraged employees to use all of their annual vacation days. Managers noticed that people who took regular breaks returned with better concentration and more creative ideas. However, some employees avoided vacations because they worried about unfinished work. The company responded by improving task sharing and asking teams to prepare coverage plans before anyone traveled.",
+    "question": "Please summarize the passage by stating the topic, two main points, and the conclusion.",
+    "maxPlays": 2,
+    "guide": "휴식의 효과와 회사의 해결책을 중심으로 3문장으로 요약하세요.",
+    "strategyArea": "듣기 요약",
+    "expressions": [
+      {"text":"The passage explains that ___.","cue":"지문의 핵심 내용을 설명할 때","category":"요약"},
+      {"text":"The key point seems to be that ___.","cue":"완벽히 기억나지 않아도 핵심을 정리할 때","category":"요약"}
+    ]
+  }],
+
+  "w5-d1": [{
+    "type": "interview",
+    "title": "여행과 여가 · 스트레스 상황",
+    "question": "Traveling can sometimes be stressful. What problems can travelers experience, and how can they deal with them?",
+    "guide": "문제 하나나 두 개를 고르고 현실적인 대비책을 제안하세요.",
+    "strategyArea": "일상·취미·여행",
+    "expressions": [
+      {"text":"Traveling helps me take a break from my daily routine.","cue":"여행의 긍정적 효과를 말할 때","category":"장점 설명"},
+      {"text":"One practical solution would be to plan ahead.","cue":"여행 문제의 해결책을 제안할 때","category":"해결책 제안"}
+    ]
+  }],
+  "w5-d2": [{
+    "type": "interview",
+    "title": "운동과 건강 · 꾸준히 하기",
+    "question": "Many people want to exercise regularly but fail to continue. What advice would you give them?",
+    "guide": "작게 시작하기, 일정 고정하기, 즐기는 활동 선택하기를 활용하세요.",
+    "strategyArea": "운동·건강",
+    "expressions": [
+      {"text":"start with a realistic goal","cue":"현실적인 목표부터 시작하다","category":"조언하기"},
+      {"text":"choose an activity that is easy to continue","cue":"꾸준히 하기 쉬운 활동을 고르다","category":"조언하기"}
+    ]
+  }],
+  "w5-d3": [{
+    "type": "visual-extra",
+    "attachToSpecial": "Charging time by charger type",
+    "title": "그래프 전략 · 최고점과 실용적 결론",
+    "question": "Which charger has the shortest charging time, and what practical conclusion can a driver draw from the comparison?",
+    "guide": "가장 낮은 시간과 사용자의 선택을 연결하세요.",
+    "strategyArea": "그래프 설명",
+    "expressions": [
+      {"text":"___ has the shortest charging time.","cue":"가장 짧은 충전 시간을 말할 때","category":"그래프 비교"},
+      {"text":"In short, ___ is the most practical option.","cue":"그래프를 실용적인 결론으로 마무리할 때","category":"결론 내리기"}
+    ]
+  }],
+  "w5-d4": [{
+    "type": "interview",
+    "title": "한국문화 · 배달문화",
+    "question": "Korean delivery services are fast and convenient. What are their advantages and possible disadvantages?",
+    "guide": "편리함과 시간 절약을 말한 뒤 비용이나 쓰레기 문제도 덧붙이세요.",
+    "strategyArea": "한국문화",
+    "expressions": [
+      {"text":"fast and convenient","cue":"빠르고 편리한","category":"장점 설명"},
+      {"text":"save people a lot of time","cue":"사람들의 시간을 많이 절약하다","category":"장점 설명"},
+      {"text":"However, it can create more packaging waste.","cue":"배달문화의 단점을 말할 때","category":"문제 설명"}
+    ]
+  }],
+  "w5-d5": [{
+    "type": "listening",
+    "title": "요약 전략 · 차량 문제와 해결책",
+    "passage": "A test team found an unusual vibration during a high-speed road test. The first measurement was not enough to identify the cause, so the engineers repeated the test under the same conditions and compared the results with data from another vehicle. They discovered that a loose mounting part was responsible. The team repaired the part and confirmed the improvement through a final test.",
+    "question": "Please summarize the passage by stating the topic, two main points, and the conclusion.",
+    "maxPlays": 2,
+    "guide": "문제, 확인 과정, 최종 해결책을 3문장으로 요약하세요.",
+    "strategyArea": "듣기 요약",
+    "expressions": [
+      {"text":"The main topic is an unusual vibration during a road test.","cue":"지문의 주제를 바로 말할 때","category":"요약"},
+      {"text":"In conclusion, the team found and fixed the cause.","cue":"문제 해결 지문을 결론으로 정리할 때","category":"결론 내리기"}
+    ]
+  }],
+  "w5-e1": [{
+    "type": "listening",
+    "title": "요약 전략 · 업무 기술의 장단점",
+    "passage": "A company introduced an AI assistant to help employees organize documents and prepare routine reports. The tool reduced repetitive work and allowed teams to complete basic tasks faster. At the same time, managers warned employees not to share confidential information with the system and asked them to verify all important results. The company concluded that the tool was useful only when employees used it responsibly.",
+    "question": "Please summarize the passage by stating the topic, two main points, and the conclusion.",
+    "maxPlays": 2,
+    "guide": "효율성의 장점, 주의점, 최종 결론을 기억하세요.",
+    "strategyArea": "듣기 요약",
+    "expressions": [
+      {"text":"The speaker mentions two main points: efficiency and responsible use.","cue":"장점과 주의점을 함께 요약할 때","category":"요약"},
+      {"text":"Although I do not remember every detail, the key point seems to be that ___.","cue":"세부내용을 놓쳤을 때 핵심으로 이어갈 때","category":"요약"}
+    ]
+  }]
+};
