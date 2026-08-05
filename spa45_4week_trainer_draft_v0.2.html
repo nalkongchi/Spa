@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <title>SPA 45 · 4-Week Active Speaking Project</title>
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --panel: #ffffff;
+      --panel-2: #f9fafb;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --accent: #2563eb;
+      --accent-2: #1d4ed8;
+      --accent-soft: #dbeafe;
+      --good: #047857;
+      --good-soft: #d1fae5;
+      --warn: #b45309;
+      --warn-soft: #fef3c7;
+      --danger: #b91c1c;
+      --danger-soft: #fee2e2;
+      --shadow: 0 10px 28px rgba(17, 24, 39, 0.08);
+      --radius: 20px;
+    }
+
+    [data-theme="dark"] {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #f9fafb;
+      --muted: #9ca3af;
+      --border: #374151;
+      --accent: #60a5fa;
+      --accent-2: #93c5fd;
+      --accent-soft: #172554;
+      --good: #34d399;
+      --good-soft: #064e3b;
+      --warn: #fbbf24;
+      --warn-soft: #451a03;
+      --danger: #f87171;
+      --danger-soft: #450a0a;
+      --shadow: none;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    button, input, textarea, select { font: inherit; }
+    button { touch-action: manipulation; }
+
+    .app {
+      width: min(100%, 920px);
+      margin: 0 auto;
+      padding: max(14px, env(safe-area-inset-top)) 14px max(28px, env(safe-area-inset-bottom));
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .brand h1 {
+      font-size: clamp(1.25rem, 5vw, 1.8rem);
+      line-height: 1.15;
+      margin: 0 0 4px;
+    }
+
+    .brand p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .nav {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 8px 0;
+      background: color-mix(in srgb, var(--bg) 92%, transparent);
+      backdrop-filter: blur(12px);
+    }
+
+    .nav button {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--muted);
+      padding: 10px 6px;
+      border-radius: 13px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .nav button.active {
+      color: var(--accent-2);
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+
+    .card h2, .card h3 { margin-top: 0; }
+    .card h2 { font-size: 1.2rem; }
+    .card h3 { font-size: 1rem; }
+    .muted { color: var(--muted); }
+
+    .hero {
+      background: linear-gradient(145deg, var(--panel), var(--accent-soft));
+      overflow: hidden;
+    }
+
+    .badge-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .badge.accent { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent); }
+
+    .progress-track {
+      height: 10px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 8px 0 4px;
+    }
+    .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width .3s ease; }
+
+    .button-row { display: flex; flex-wrap: wrap; gap: 9px; }
+    .btn {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 15px;
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 650;
+      min-height: 46px;
+    }
+    .btn:hover { filter: brightness(0.98); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    [data-theme="dark"] .btn.primary { color: #07111f; }
+    .btn.danger { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+    .btn.good { background: var(--good-soft); color: var(--good); border-color: var(--good); }
+    .btn.full { width: 100%; }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 7px;
+    }
+    .day-cell {
+      min-height: 72px;
+      padding: 7px 5px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      position: relative;
+    }
+    .day-cell strong { display: block; font-size: .88rem; }
+    .day-cell small { color: var(--muted); font-size: .7rem; }
+    .day-cell.current { outline: 2px solid var(--accent); }
+    .day-cell.complete { background: var(--good-soft); border-color: var(--good); }
+    .day-cell .dot {
+      position: absolute;
+      right: 7px;
+      top: 7px;
+      width: 8px;
+      height: 8px;
+      background: var(--good);
+      border-radius: 50%;
+      display: none;
+    }
+    .day-cell.complete .dot { display: block; }
+
+    .session-list { display: grid; gap: 9px; }
+    .session-step {
+      border-left: 4px solid var(--accent);
+      padding: 10px 12px;
+      background: var(--panel-2);
+      border-radius: 0 13px 13px 0;
+    }
+    .session-step strong { display: block; margin-bottom: 2px; }
+
+    .question-stage {
+      min-height: 265px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
+      gap: 16px;
+      text-align: center;
+      position: relative;
+    }
+
+    .question-box {
+      padding: 26px 18px;
+      border: 2px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 20px;
+      transition: opacity .55s ease, transform .55s ease, filter .55s ease;
+    }
+    .question-box.hidden-question {
+      opacity: 0;
+      transform: scale(.97);
+      filter: blur(8px);
+      pointer-events: none;
+      user-select: none;
+    }
+    .question-box .q-label { color: var(--muted); font-size: .82rem; margin-bottom: 9px; }
+    .question-box .q-text {
+      font-size: clamp(1.2rem, 5vw, 1.75rem);
+      line-height: 1.4;
+      font-weight: 750;
+    }
+
+    .timer {
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(2.1rem, 12vw, 4rem);
+      font-weight: 800;
+      letter-spacing: .03em;
+    }
+    .timer.recording { color: var(--danger); }
+    .rec-indicator { color: var(--danger); font-weight: 750; }
+    .pulse {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: var(--danger);
+      border-radius: 50%;
+      margin-right: 6px;
+      animation: pulse 1.1s infinite;
+    }
+    @keyframes pulse { 50% { opacity: .25; } }
+
+    .notice {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--warn-soft);
+      color: var(--warn);
+      border: 1px solid var(--warn);
+      line-height: 1.55;
+    }
+    .notice.good { background: var(--good-soft); color: var(--good); border-color: var(--good); }
+    .notice.danger { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+
+    textarea, input[type="text"], input[type="date"], input[type="number"], select {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    textarea { min-height: 150px; resize: vertical; line-height: 1.55; }
+    label { display: block; font-weight: 650; margin-bottom: 7px; }
+    .field { margin-bottom: 14px; }
+
+    .check-grid { display: grid; gap: 9px; }
+    .check-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 11px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+    }
+    .check-item input { margin-top: 3px; transform: scale(1.2); }
+
+    audio { width: 100%; margin: 8px 0; }
+
+    details {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 11px 13px;
+      background: var(--panel-2);
+      margin-bottom: 9px;
+    }
+    summary { cursor: pointer; font-weight: 700; }
+
+    .record-entry {
+      border-bottom: 1px solid var(--border);
+      padding: 12px 0;
+    }
+    .record-entry:last-child { border-bottom: 0; }
+
+    .two-col { display: grid; gap: 12px; }
+    @media (min-width: 720px) {
+      .two-col { grid-template-columns: 1fr 1fr; }
+      .settings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    }
+
+    .hidden { display: none !important; }
+    .small { font-size: .84rem; }
+    .center { text-align: center; }
+    .spacer { height: 6px; }
+
+    .footer-note {
+      color: var(--muted);
+      text-align: center;
+      font-size: .78rem;
+      padding: 8px 12px 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>SPA 45 · 4-Week Project</h1>
+        <p>먼저 말하고, 나중에 고칩니다.</p>
+      </div>
+      <button class="icon-btn" id="themeBtn" aria-label="테마 변경">◐</button>
+    </header>
+
+    <nav class="nav" aria-label="메인 메뉴">
+      <button data-view="home" class="active">오늘</button>
+      <button data-view="calendar">한 달</button>
+      <button data-view="records">기록</button>
+      <button data-view="settings">설정</button>
+    </nav>
+
+    <main>
+      <section class="view active" id="view-home">
+        <div class="card hero">
+          <div class="badge-row">
+            <span class="badge accent" id="todayBadge">Week 1 · 월요일</span>
+            <span class="badge" id="durationBadge">평일 30분</span>
+            <span class="badge" id="questionCountBadge">질문 2개</span>
+          </div>
+          <h2 id="dayTitle">Day 1</h2>
+          <p id="dayGoal" class="muted"></p>
+          <div class="progress-track"><div class="progress-fill" id="monthProgress"></div></div>
+          <p class="small muted" id="progressText"></p>
+          <div class="button-row">
+            <button class="btn primary" id="startSessionBtn">오늘 수업 시작</button>
+            <button class="btn" id="openCalendarBtn">다른 날짜 선택</button>
+          </div>
+        </div>
+
+        <div class="card" id="sessionPlanCard">
+          <h3>오늘의 수업 흐름</h3>
+          <div id="sessionPlan" class="session-list"></div>
+        </div>
+
+        <div class="card hidden" id="trainerCard">
+          <div id="trainerIntro">
+            <h2>말하기 훈련</h2>
+            <div class="notice">
+              🎙️ <strong>마이크 권한을 허용해 주세요.</strong><br />
+              녹음이 시작된 뒤 질문이 잠깐 표시되고 사라집니다. 질문을 캡처하거나 먼저 답안을 쓰지 마세요.
+            </div>
+            <div class="spacer"></div>
+            <div class="button-row">
+              <button class="btn primary" id="beginQuestionBtn">녹음 시작 + 질문 공개</button>
+              <button class="btn" id="skipQuestionBtn">이 질문 건너뛰기</button>
+            </div>
+          </div>
+
+          <div id="recordingStage" class="hidden question-stage">
+            <div class="rec-indicator"><span class="pulse"></span>REC <span id="recordElapsed">00:00</span></div>
+            <div class="question-box" id="questionBox">
+              <div class="q-label" id="questionMeta">Question 1</div>
+              <div class="q-text" id="questionText"></div>
+            </div>
+            <div class="timer recording" id="answerTimer">00:40</div>
+            <p class="muted" id="stageInstruction">질문을 읽고 핵심을 기억하세요.</p>
+            <div class="button-row center">
+              <button class="btn danger" id="stopRecordingBtn">답변 완료 · 녹음 정지</button>
+              <button class="btn hidden" id="showQuestionOnceBtn">질문 1회 다시 보기</button>
+            </div>
+          </div>
+
+          <div id="reviewStage" class="hidden">
+            <h3>1. 내 답변 다시 듣기</h3>
+            <div class="notice good">
+              녹음을 들으며 <strong>실제로 말한 그대로</strong> 받아 적으세요. 멈춤은 <code>...</code>, 반복과 잘못된 문법도 그대로 남깁니다.
+            </div>
+            <audio id="audioPlayback" controls></audio>
+            <div class="button-row">
+              <button class="btn" id="downloadAudioBtn">녹음 파일 저장</button>
+              <button class="btn" id="retryRecordingBtn">삭제하고 다시 녹음</button>
+            </div>
+
+            <div class="field" style="margin-top:16px;">
+              <label for="transcriptInput">2. 실제 발화 받아쓰기</label>
+              <textarea id="transcriptInput" placeholder="예: I think... first, the company should..."></textarea>
+            </div>
+
+            <h3>3. 자가평가</h3>
+            <div id="selfCheckGrid" class="check-grid"></div>
+
+            <div class="field" style="margin-top:14px;">
+              <label for="confidenceSelect">이번 답변 체감</label>
+              <select id="confidenceSelect">
+                <option value="success">성공 — 비교적 안정적으로 답함</option>
+                <option value="shaky">흔들림 — 답했지만 멈춤/오류가 많음</option>
+                <option value="retry">재연습 — 거의 답하지 못함</option>
+              </select>
+            </div>
+
+            <div class="button-row">
+              <button class="btn primary" id="makePromptBtn">ChatGPT 첨삭 프롬프트 만들기</button>
+              <button class="btn" id="saveAnswerBtn">답변 기록 저장</button>
+            </div>
+          </div>
+
+          <div id="promptStage" class="hidden">
+            <h3>4. ChatGPT 수업 프롬프트</h3>
+            <p class="muted small">아래 내용을 복사해 이 대화에 붙여넣으면, 실제 발화를 기준으로 수업이 이어집니다.</p>
+            <textarea id="promptOutput" readonly></textarea>
+            <div class="button-row">
+              <button class="btn primary" id="copyPromptBtn">프롬프트 복사</button>
+              <button class="btn" id="nextQuestionBtn">다음 질문</button>
+              <button class="btn good hidden" id="finishDayBtn">오늘 수업 완료</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-calendar">
+        <div class="card">
+          <h2>4주 커리큘럼</h2>
+          <p class="muted small">월~금 30분, 토·일 120분 구성입니다. 날짜를 눌러 해당 수업으로 이동하세요.</p>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </div>
+        <div class="card" id="calendarDetail"></div>
+      </section>
+
+      <section class="view" id="view-records">
+        <div class="card">
+          <h2>학습 기록</h2>
+          <div class="badge-row">
+            <span class="badge" id="recordCountBadge">답변 0개</span>
+            <span class="badge" id="completeCountBadge">완료 0일</span>
+          </div>
+          <div id="recordsList"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="card">
+          <h2>설정</h2>
+          <div class="settings-grid">
+            <div class="field">
+              <label for="startDateInput">1주차 월요일 시작일</label>
+              <input id="startDateInput" type="date" />
+            </div>
+            <div class="field">
+              <label for="revealSecondsInput">질문 표시 시간(초)</label>
+              <input id="revealSecondsInput" type="number" min="2" max="15" value="5" />
+            </div>
+            <div class="field">
+              <label for="answerSecondsInput">기본 답변 시간(초)</label>
+              <input id="answerSecondsInput" type="number" min="20" max="120" value="40" />
+            </div>
+            <div class="field">
+              <label for="speechRateInput">질문 읽기 속도</label>
+              <select id="speechRateInput">
+                <option value="0.8">느리게</option>
+                <option value="0.95" selected>보통</option>
+                <option value="1.1">빠르게</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="check-grid">
+            <label class="check-item">
+              <input type="checkbox" id="speakQuestionToggle" checked />
+              <span><strong>질문을 영어로 한 번 읽어주기</strong><br /><span class="muted small">기기의 영어 음성합성을 사용합니다.</span></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" id="autoStopToggle" checked />
+              <span><strong>답변 시간이 끝나면 자동 녹음 정지</strong></span>
+            </label>
+          </div>
+          <div class="button-row" style="margin-top:14px;">
+            <button class="btn primary" id="saveSettingsBtn">설정 저장</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>백업과 초기화</h3>
+          <p class="muted small">녹음 음성은 백업에 포함되지 않습니다. 받아쓰기와 학습 기록만 저장됩니다.</p>
+          <div class="button-row">
+            <button class="btn" id="exportBtn">JSON 백업 내보내기</button>
+            <label class="btn" for="importInput" style="display:inline-flex;align-items:center;">JSON 백업 불러오기</label>
+            <input class="hidden" id="importInput" type="file" accept="application/json" />
+            <button class="btn danger" id="resetBtn">전체 기록 초기화</button>
+          </div>
+        </div>
+
+        <div class="card" id="micGuideCard">
+          <h3>마이크 사용 안내</h3>
+          <p class="muted small">
+            <strong>다운로드 폴더의 content:// 주소로 직접 열면 녹음이 차단될 수 있습니다.</strong><br />
+            Netlify 또는 GitHub Pages에 배포한 HTTPS 주소로 실행하세요. 첫 녹음 때 브라우저의 마이크 권한 요청에서 허용을 선택합니다.<br /><br />
+            이미 차단했다면 주소창 왼쪽의 자물쇠 또는 ⓘ 아이콘 → 권한 → 마이크 → 허용으로 변경한 뒤 페이지를 새로고침하세요.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <p class="footer-note">SPA 45 Project · 단일 HTML 초안 · 음성은 서버로 전송되지 않습니다.</p>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'spa45-project-v1';
+
+    const weekdayNames = ['월요일','화요일','수요일','목요일','금요일','토요일','일요일'];
+
+    const curriculum = [
+      {
+        week: 1,
+        theme: '짧고 완전한 답변 만들기',
+        days: [
+          { day: 1, title: '첫 문장 바로 시작하기', goal: '선호와 이유를 30~40초 동안 쉬운 문장으로 연결한다.', duration: 30, plan: [['표현 회수','4분'],['즉답 녹음 2문제','12분'],['받아쓰기·자가평가','8분'],['ChatGPT 첨삭·재답변','6분']], questions: [
+            'Do you prefer to plan your work in detail or make decisions as you go? Why?',
+            'What is one habit that helps you stay productive during a busy day?'
+          ]},
+          { day: 2, title: '이유를 두 단계로 확장하기', goal: '결론 뒤에 이유와 구체적인 설명을 붙인다.', duration: 30, plan: [['어제 표현 회수','4분'],['의견 질문 2개','12분'],['받아쓰기','6분'],['첨삭·재답변','8분']], questions: [
+            'What is the most important quality for an employee to have?',
+            'Do you think companies should allow flexible working hours? Why or why not?'
+          ]},
+          { day: 3, title: '비교 질문 대응하기', goal: '두 선택지를 비교하고 자신의 선택을 분명히 말한다.', duration: 30, plan: [['비교 표현 워밍업','5분'],['비교 질문 2개','12분'],['자가평가','5분'],['첨삭·재답변','8분']], questions: [
+            'Which is more effective for learning a new skill: studying alone or learning with others?',
+            'Would you rather solve a problem quickly or spend more time finding the best solution?'
+          ]},
+          { day: 4, title: '장점과 단점 말하기', goal: '한쪽 주장만 말하지 않고 단점이나 조건도 덧붙인다.', duration: 30, plan: [['연결 표현 회수','4분'],['장단점 질문 2개','14분'],['받아쓰기','6분'],['짧은 재답변','6분']], questions: [
+            'What are the advantages and disadvantages of working in a large company?',
+            'What are the benefits and drawbacks of using online meetings at work?'
+          ]},
+          { day: 5, title: '1주차 누적 점검', goal: '처음 보는 질문에서도 3초 안에 첫 문장을 시작한다.', duration: 30, plan: [['표현 랜덤 회수','5분'],['무힌트 즉답 3개','15분'],['취약 답변 받아쓰기','5분'],['주간 피드백 프롬프트','5분']], questions: [
+            'How do you usually make an important decision?',
+            'What makes communication effective in the workplace?',
+            'What is one change that could make your daily life more convenient?'
+          ]},
+          { day: 6, title: '토요일 집중 훈련', goal: '개인·업무 주제에서 40초 답변을 안정적으로 완성한다.', duration: 120, plan: [['표현 회수','15분'],['즉답 4문제','30분'],['답변 구조 훈련','20분'],['휴식','10분'],['꼬리 질문','20분'],['약한 답변 받아쓰기·첨삭','25분']], questions: [
+            'What is a skill that every engineer should continue to develop?',
+            'How can employees prevent misunderstandings at work?',
+            'What do you do when you have several tasks with the same deadline?',
+            'What makes a workplace comfortable and motivating?',
+            'How should a new employee prepare for their first few weeks?',
+            'What is the best way to give constructive feedback to a colleague?'
+          ]},
+          { day: 7, title: '일요일 미니 모의시험', goal: '힌트 없이 연속 질문에 답하고 가장 약한 답변만 분석한다.', duration: 120, plan: [['워밍업','10분'],['모의시험 1','25분'],['약한 답변 3개 받아쓰기','25분'],['ChatGPT 종합 피드백','20분'],['휴식','10분'],['취약 질문 재도전','20분'],['주간 기록','10분']], questions: [
+            'What kind of work environment helps people perform at their best?',
+            'Should companies provide more training during working hours?',
+            'Describe a useful piece of technology you use at work.',
+            'How can a manager build trust within a team?',
+            'What should people consider before changing jobs?',
+            'Do you think experience is more valuable than formal education?'
+          ]}
+        ]
+      },
+      {
+        week: 2,
+        theme: '직장·자동차 주제 확장',
+        days: [
+          { day: 8, title: '품질을 일반 영어로 설명하기', goal: '전문지식을 쉬운 영어로 풀어서 설명한다.', duration: 30, plan: [['핵심 표현 회수','4분'],['업무 질문 2개','13분'],['받아쓰기','6분'],['첨삭·재답변','7분']], questions: [
+            'What does good product quality mean to you?',
+            'How can a company reduce repeated mistakes during product development?'
+          ]},
+          { day: 9, title: '안전과 책임', goal: '원인, 예방 방법, 기대 결과를 순서대로 말한다.', duration: 30, plan: [['원인·결과 표현','5분'],['안전 질문 2개','12분'],['자가평가','5분'],['재답변','8분']], questions: [
+            'Why is it important for employees to report small safety issues?',
+            'What can a company do to create a stronger safety culture?'
+          ]},
+          { day: 10, title: '고객 관점으로 말하기', goal: '고객의 기대, 문제, 회사의 대응을 연결한다.', duration: 30, plan: [['고객 관련 표현','4분'],['질문 2개','13분'],['받아쓰기','6분'],['첨삭','7분']], questions: [
+            'What do customers expect most from a new vehicle?',
+            'How should a company respond when many customers report the same problem?'
+          ]},
+          { day: 11, title: '기술 변화에 의견 말하기', goal: '기술의 이점과 우려를 균형 있게 설명한다.', duration: 30, plan: [['기술 어휘 회수','4분'],['의견 질문 2개','14분'],['자가평가','4분'],['재답변','8분']], questions: [
+            'How is artificial intelligence changing the work of engineers?',
+            'Do you think cars are becoming too dependent on software?'
+          ]},
+          { day: 12, title: '문제 해결 과정 설명하기', goal: '문제 확인, 정보 수집, 해결, 검증의 순서를 말한다.', duration: 30, plan: [['순서 표현','5분'],['문제 해결 질문 2개','13분'],['받아쓰기','5분'],['첨삭·재답변','7분']], questions: [
+            'What steps should an engineer take when a test result is unexpected?',
+            'How can a team decide which solution is the most practical?'
+          ]},
+          { day: 13, title: '토요일 자동차 집중 훈련', goal: '자동차 산업 질문을 전문용어에 의존하지 않고 설명한다.', duration: 120, plan: [['주간 표현 회수','15분'],['자동차 즉답 4문제','30분'],['장단점 확장','20분'],['휴식','10분'],['꼬리 질문','20분'],['약점 첨삭','25분']], questions: [
+            'What feature do you think will be most important in future vehicles?',
+            'How can automakers make electric vehicles more attractive to customers?',
+            'What are the main challenges of developing quieter vehicles?',
+            'Should drivers be allowed to rely heavily on driving assistance systems?',
+            'How can vehicle testing become more efficient without reducing quality?',
+            'What should automakers do to earn long-term customer trust?'
+          ]},
+          { day: 14, title: '일요일 직장·자동차 모의시험', goal: '업무 질문에서 의견과 예시를 45초 동안 유지한다.', duration: 120, plan: [['워밍업','10분'],['모의시험','30분'],['답변 3개 받아쓰기','25분'],['종합 첨삭','20분'],['휴식','10분'],['재시험','20분'],['기록','5분']], questions: [
+            'How should companies balance product quality and development speed?',
+            'What can engineers learn from customer complaints?',
+            'Do you think environmental regulations help or hurt the automotive industry?',
+            'How can different departments cooperate more effectively?',
+            'What makes a technical explanation easy for non-engineers to understand?',
+            'Should companies replace old equipment even if it still works?'
+          ]}
+        ]
+      },
+      {
+        week: 3,
+        theme: '경험형 답변과 듣기 요약',
+        days: [
+          { day: 15, title: '과거 경험의 네 단계', goal: '상황·문제·행동·결과를 빠르게 구성한다.', duration: 30, plan: [['과거시제 워밍업','5분'],['경험 질문 2개','13분'],['받아쓰기','6분'],['첨삭·재답변','6분']], questions: [
+            'Tell me about a time when you had to learn a new tool or process quickly.',
+            'Describe a time when you solved a problem with limited information.'
+          ]},
+          { day: 16, title: '실수와 교훈', goal: '실수를 숨기지 않고 조치와 배운 점까지 말한다.', duration: 30, plan: [['경험 구조 회수','4분'],['경험 질문 2개','14분'],['자가평가','5분'],['재답변','7분']], questions: [
+            'Tell me about a mistake that taught you an important lesson.',
+            'Describe a time when you had to correct your work after receiving feedback.'
+          ]},
+          { day: 17, title: '압박과 우선순위', goal: '시간 압박 속에서 한 행동을 구체적으로 설명한다.', duration: 30, plan: [['시간 표현','4분'],['경험 질문 2개','14분'],['받아쓰기','5분'],['첨삭','7분']], questions: [
+            'Tell me about a time when you had to finish an important task under pressure.',
+            'Describe a situation where you had to choose between two urgent tasks.'
+          ]},
+          { day: 18, title: '협업 경험', goal: '자신의 행동뿐 아니라 팀과의 상호작용을 설명한다.', duration: 30, plan: [['협업 표현','4분'],['경험 질문 2개','14분'],['자가평가','5분'],['재답변','7분']], questions: [
+            'Tell me about a project where cooperation between departments was important.',
+            'Describe a time when someone else’s suggestion improved your work.'
+          ]},
+          { day: 19, title: '짧은 듣기 요약 입문', goal: '주제, 핵심 정보 두 개, 결과를 자기 문장으로 요약한다.', duration: 30, plan: [['요약 틀 확인','5분'],['지문 듣기·요약 2회','15분'],['받아쓰기','5분'],['요약 첨삭','5분']], questions: [
+            'Listen-and-summarize prompt: A supplier has delayed an important component, so the team must revise the testing plan and contact other suppliers. Summarize the situation and explain the team’s next steps.',
+            'Listen-and-summarize prompt: A customer survey shows that drivers value simple controls more than additional features. Summarize the finding and explain one possible response from the company.'
+          ]},
+          { day: 20, title: '토요일 경험형 집중 훈련', goal: '준비하지 않은 과거 질문에 실제 경험으로 답한다.', duration: 120, plan: [['경험 6개 키워드 정리','20분'],['경험 질문 4개','30분'],['휴식','10분'],['꼬리 질문','20분'],['듣기 요약','20분'],['약한 답변 첨삭','20분']], questions: [
+            'Describe a time when you had to explain a technical issue to someone from another field.',
+            'Tell me about a time when you noticed a problem before others did.',
+            'Describe a difficult decision you made at work.',
+            'Tell me about a time when a project did not go as expected.',
+            'Listen-and-summarize prompt: A testing team found inconsistent data from two different measurement systems and decided to repeat the test after checking the equipment.',
+            'Listen-and-summarize prompt: A company introduced a new reporting system, but employees found it confusing, so additional training was scheduled.'
+          ]},
+          { day: 21, title: '일요일 경험·요약 모의시험', goal: '경험형과 요약형을 섞어도 답변 구조를 유지한다.', duration: 120, plan: [['워밍업','10분'],['모의시험','30분'],['취약 답변 받아쓰기','25분'],['ChatGPT 피드백','20분'],['휴식','10분'],['재시험','20분'],['기록','5분']], questions: [
+            'Tell me about a time when you changed your approach after new information became available.',
+            'Describe a situation where clear communication prevented a bigger problem.',
+            'Listen-and-summarize prompt: The engineering team completed testing on time, but the final report was delayed because several departments had to review the results.',
+            'Tell me about a time when you helped someone understand a complicated task.',
+            'Listen-and-summarize prompt: A new vehicle feature received positive feedback, but some users said the instructions were difficult to understand.',
+            'What did you learn from a project that was more difficult than expected?'
+          ]}
+        ]
+      },
+      {
+        week: 4,
+        theme: '돌발 질문과 실전 안정화',
+        days: [
+          { day: 22, title: '사회·기술 돌발 질문', goal: '낯선 주제에서도 입장을 정하고 이유를 두 개 말한다.', duration: 30, plan: [['버티기 표현','5분'],['돌발 질문 2개','13분'],['받아쓰기','5분'],['재답변','7분']], questions: [
+            'Should governments limit the use of private cars in crowded city centers?',
+            'Do you think automation will create more jobs than it removes?'
+          ]},
+          { day: 23, title: '반대 의견 대응', goal: '상대 의견을 인정한 뒤 자신의 기준을 유지한다.', duration: 30, plan: [['양보 표현','4분'],['반박 질문 2개','14분'],['자가평가','5분'],['재답변','7분']], questions: [
+            'Some people say product testing takes too much time. How would you respond?',
+            'Some employees believe meetings are usually a waste of time. Do you agree?'
+          ]},
+          { day: 24, title: '대안 제시', goal: '문제를 설명한 뒤 현실적인 해결책 두 가지를 제시한다.', duration: 30, plan: [['해결책 표현','4분'],['문제 질문 2개','14분'],['받아쓰기','5분'],['첨삭','7분']], questions: [
+            'What should a company do if employees are resistant to a new system?',
+            'How can cities reduce traffic without making travel inconvenient?'
+          ]},
+          { day: 25, title: '꼬리 질문 2회 버티기', goal: '첫 답변 후 이유, 예시, 예외를 추가로 설명한다.', duration: 30, plan: [['첫 답변','7분'],['꼬리 질문 2회','10분'],['받아쓰기','6분'],['종합 첨삭','7분']], questions: [
+            'What is the best way for a company to encourage innovation?',
+            'What responsibility do engineers have toward society?'
+          ]},
+          { day: 26, title: '실전 전 최종 약점 점검', goal: '모르는 질문을 피하지 않고 최소 30초를 유지한다.', duration: 30, plan: [['랜덤 즉답','15분'],['약한 답변 받아쓰기','7분'],['최종 교정','8분']], questions: [
+            'How might transportation change over the next twenty years?',
+            'What is one business practice that companies should stop using?',
+            'How should people balance convenience and privacy when using new technology?'
+          ]},
+          { day: 27, title: '토요일 실전 모의 SPA', goal: '힌트와 중간 피드백 없이 한 세트를 완주한다.', duration: 120, plan: [['워밍업','10분'],['실전 세트 1','25분'],['약한 답변 3개 받아쓰기','25분'],['종합 피드백','20분'],['휴식','10분'],['실전 세트 2','20분'],['기록','10분']], questions: [
+            'What is one major challenge facing the automotive industry today?',
+            'How can companies make better use of employee suggestions?',
+            'Describe a time when you had to remain calm in a difficult situation.',
+            'Do you think consumers have too many choices when buying technology products?',
+            'Listen-and-summarize prompt: A manufacturer plans to shorten development time by using more computer simulations, but engineers will still perform physical tests for safety-critical components.',
+            'What should a team do when members strongly disagree about the best solution?'
+          ]},
+          { day: 28, title: '일요일 최종 모의시험', goal: '45점 목표 답변의 안정성, 관련성, 완결성을 최종 점검한다.', duration: 120, plan: [['최종 워밍업','10분'],['최종 모의시험','30분'],['전체 자가평가','15분'],['핵심 답변 받아쓰기','20분'],['ChatGPT 최종 진단','20분'],['휴식','10분'],['마지막 재답변','10분'],['시험 직전 메모','5분']], questions: [
+            'What makes a company successful over a long period of time?',
+            'Describe a professional skill you improved through practice.',
+            'How should companies respond to rapid changes in customer expectations?',
+            'Tell me about a time when careful preparation helped you avoid a problem.',
+            'Listen-and-summarize prompt: A company received strong sales results for a new model, but customer service teams reported repeated questions about one feature, so the company plans to revise the user guide.',
+            'What is one change you would like to see in the way people work in the future?'
+          ]}
+        ]
+      }
+    ];
+
+    const flatDays = curriculum.flatMap(week => week.days.map(day => ({...day, week: week.week, weekTheme: week.theme})));
+
+    const defaultState = {
+      selectedDay: 1,
+      currentQuestionIndex: 0,
+      completedDays: [],
+      answers: [],
+      settings: {
+        startDate: getMondayISO(new Date()),
+        revealSeconds: 5,
+        answerSeconds: 40,
+        speakQuestion: true,
+        speechRate: 0.95,
+        autoStop: true,
+        theme: 'light'
+      }
+    };
+
+    let state = loadState();
+    let mediaRecorder = null;
+    let mediaStream = null;
+    let audioChunks = [];
+    let currentAudioBlob = null;
+    let currentAudioUrl = null;
+    let answerCountdown = null;
+    let recordClock = null;
+    let questionHideTimeout = null;
+    let answerSecondsLeft = state.settings.answerSeconds;
+    let recordElapsedSeconds = 0;
+    let questionReshowUsed = false;
+    let questionDisplayDone = false;
+    let speechDone = true;
+
+    const selfChecks = [
+      ['question_understood', '질문을 정확히 이해했다'],
+      ['quick_start', '3초 안에 첫 문장을 시작했다'],
+      ['direct_answer', '질문에 직접 답했다'],
+      ['reason', '이유를 설명했다'],
+      ['detail', '예시 또는 구체적인 내용을 넣었다'],
+      ['complete', '문장을 끝까지 완성했다'],
+      ['no_long_pause', '3초 이상 긴 침묵이 없었다']
+    ];
+
+    function getMondayISO(date) {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      d.setDate(d.getDate() + diff);
+      return toISODate(d);
+    }
+
+    function toISODate(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        return saved ? deepMerge(structuredClone(defaultState), saved) : structuredClone(defaultState);
+      } catch (e) {
+        return structuredClone(defaultState);
+      }
+    }
+
+    function deepMerge(target, source) {
+      if (!source || typeof source !== 'object') return target;
+      for (const key of Object.keys(source)) {
+        if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+          target[key] = deepMerge(target[key] || {}, source[key]);
+        } else {
+          target[key] = source[key];
+        }
+      }
+      return target;
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function getDay(dayNumber = state.selectedDay) {
+      return flatDays.find(d => d.day === Number(dayNumber)) || flatDays[0];
+    }
+
+    function dayDate(dayNumber) {
+      const start = new Date(`${state.settings.startDate}T12:00:00`);
+      start.setDate(start.getDate() + dayNumber - 1);
+      return start;
+    }
+
+    function formatKoreanDate(date) {
+      return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+    }
+
+    function autoSelectToday() {
+      const start = new Date(`${state.settings.startDate}T00:00:00`);
+      const today = new Date();
+      const delta = Math.floor((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - start) / 86400000) + 1;
+      if (delta >= 1 && delta <= 28 && !state._manualSelection) state.selectedDay = delta;
+    }
+
+    function switchView(viewName) {
+      document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `view-${viewName}`));
+      document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.view === viewName));
+      if (viewName === 'calendar') renderCalendar();
+      if (viewName === 'records') renderRecords();
+      if (viewName === 'settings') fillSettings();
+      window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+
+    function renderHome() {
+      const day = getDay();
+      const weekday = weekdayNames[(day.day - 1) % 7];
+      document.getElementById('todayBadge').textContent = `Week ${day.week} · ${weekday}`;
+      document.getElementById('durationBadge').textContent = day.duration >= 120 ? '주말 120분' : '평일 30분';
+      document.getElementById('questionCountBadge').textContent = `질문 ${day.questions.length}개`;
+      document.getElementById('dayTitle').textContent = `Day ${day.day} · ${day.title}`;
+      document.getElementById('dayGoal').textContent = day.goal;
+      document.getElementById('sessionPlan').innerHTML = day.plan.map(([name,time]) => `<div class="session-step"><strong>${escapeHtml(name)}</strong><span class="muted small">${escapeHtml(time)}</span></div>`).join('');
+
+      const done = state.completedDays.length;
+      const percent = Math.round((done / 28) * 100);
+      document.getElementById('monthProgress').style.width = `${percent}%`;
+      document.getElementById('progressText').textContent = `${done}/28일 완료 · ${percent}%`;
+      document.getElementById('startSessionBtn').textContent = state.completedDays.includes(day.day) ? '이 수업 다시 열기' : '오늘 수업 시작';
+
+      resetTrainerUI(false);
+    }
+
+    function renderCalendar() {
+      const grid = document.getElementById('calendarGrid');
+      grid.innerHTML = flatDays.map(day => {
+        const classes = ['day-cell'];
+        if (day.day === state.selectedDay) classes.push('current');
+        if (state.completedDays.includes(day.day)) classes.push('complete');
+        return `<button class="${classes.join(' ')}" data-day="${day.day}"><span class="dot"></span><strong>D${day.day}</strong><small>${weekdayNames[(day.day - 1) % 7]}<br>${day.duration}분</small></button>`;
+      }).join('');
+      grid.querySelectorAll('[data-day]').forEach(btn => btn.addEventListener('click', () => selectDay(Number(btn.dataset.day), false)));
+      renderCalendarDetail();
+    }
+
+    function renderCalendarDetail() {
+      const day = getDay();
+      const detail = document.getElementById('calendarDetail');
+      const date = dayDate(day.day);
+      detail.innerHTML = `
+        <div class="badge-row"><span class="badge accent">Week ${day.week}</span><span class="badge">${formatKoreanDate(date)}</span><span class="badge">${day.duration}분</span></div>
+        <h2>Day ${day.day} · ${escapeHtml(day.title)}</h2>
+        <p class="muted">${escapeHtml(day.goal)}</p>
+        <details><summary>수업 순서</summary>${day.plan.map(([n,t]) => `<p><strong>${escapeHtml(n)}</strong> · ${escapeHtml(t)}</p>`).join('')}</details>
+        <p class="small muted">질문 내용은 훈련 화면에서 녹음을 시작한 뒤에만 공개됩니다.</p>
+        <button class="btn primary full" id="goSelectedDayBtn">이 수업 열기</button>
+      `;
+      document.getElementById('goSelectedDayBtn').addEventListener('click', () => { switchView('home'); renderHome(); });
+    }
+
+    function selectDay(dayNumber, goHome = true) {
+      state.selectedDay = Math.max(1, Math.min(28, dayNumber));
+      state.currentQuestionIndex = 0;
+      state._manualSelection = true;
+      saveState();
+      if (goHome) switchView('home');
+      renderHome();
+      renderCalendar();
+    }
+
+    function startSession() {
+      state.currentQuestionIndex = 0;
+      saveState();
+      document.getElementById('trainerCard').classList.remove('hidden');
+      document.getElementById('sessionPlanCard').classList.add('hidden');
+      prepareQuestionIntro();
+      document.getElementById('trainerCard').scrollIntoView({behavior:'smooth', block:'start'});
+    }
+
+    function prepareQuestionIntro() {
+      const day = getDay();
+      const idx = state.currentQuestionIndex;
+      document.getElementById('trainerIntro').classList.remove('hidden');
+      document.getElementById('recordingStage').classList.add('hidden');
+      document.getElementById('reviewStage').classList.add('hidden');
+      document.getElementById('promptStage').classList.add('hidden');
+      document.getElementById('beginQuestionBtn').textContent = `질문 ${idx + 1}/${day.questions.length} · 녹음 시작`;
+      document.getElementById('skipQuestionBtn').disabled = day.questions.length <= 1;
+      clearRecordingResources();
+    }
+
+    function openMicHelp() {
+      switchView('settings');
+      requestAnimationFrame(() => {
+        document.getElementById('micGuideCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+
+    async function beginQuestion() {
+      // Android의 다운로드 화면(content://)에서 직접 연 HTML은 마이크 접근이 막힐 수 있습니다.
+      // 실제 모바일 사용은 HTTPS 배포 주소에서 실행하는 것이 가장 안정적입니다.
+      if (!window.isSecureContext || location.protocol === 'content:') {
+        const goToHelp = confirm(
+          '현재 파일이 다운로드 화면(content://)에서 직접 열려 있어 마이크를 사용할 수 없습니다.\n\n' +
+          'Netlify 또는 GitHub Pages에 올린 HTTPS 주소로 열어야 합니다.\n\n' +
+          '확인을 누르면 앱의 마이크 안내로 이동합니다.'
+        );
+        if (goToHelp) openMicHelp();
+        return;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        const goToHelp = confirm(
+          '이 브라우저에서는 웹 녹음을 사용할 수 없습니다.\n\n' +
+          '최신 Chrome 또는 Samsung Internet에서 HTTPS 주소로 열어 주세요.\n\n' +
+          '확인을 누르면 앱의 마이크 안내로 이동합니다.'
+        );
+        if (goToHelp) openMicHelp();
+        return;
+      }
+
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = getSupportedMimeType();
+        mediaRecorder = mimeType ? new MediaRecorder(mediaStream, { mimeType }) : new MediaRecorder(mediaStream);
+        audioChunks = [];
+        mediaRecorder.addEventListener('dataavailable', event => {
+          if (event.data && event.data.size > 0) audioChunks.push(event.data);
+        });
+        mediaRecorder.addEventListener('stop', onRecordingStopped, { once: true });
+        mediaRecorder.start(250);
+        showRecordingStage();
+      } catch (error) {
+        console.error('Microphone error:', error);
+        const denied = error?.name === 'NotAllowedError' || error?.name === 'SecurityError';
+        const message = denied
+          ? '마이크 권한이 차단되어 있습니다.\n\n주소창 왼쪽의 자물쇠 또는 ⓘ 아이콘 → 권한 → 마이크 → 허용으로 바꿔 주세요.\n\n확인을 누르면 앱의 마이크 안내로 이동합니다.'
+          : '마이크를 시작하지 못했습니다. 다른 앱에서 마이크를 사용 중인지 확인하고 다시 시도해 주세요.\n\n확인을 누르면 앱의 마이크 안내로 이동합니다.';
+        if (confirm(message)) openMicHelp();
+      }
+    }
+
+    function getSupportedMimeType() {
+      const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus'
+      ];
+      return candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+    }
+
+    function showRecordingStage() {
+      const day = getDay();
+      const idx = state.currentQuestionIndex;
+      const question = day.questions[idx];
+      document.getElementById('trainerIntro').classList.add('hidden');
+      document.getElementById('recordingStage').classList.remove('hidden');
+      document.getElementById('questionMeta').textContent = `Question ${idx + 1} / ${day.questions.length}`;
+      document.getElementById('questionText').textContent = questionForStage(question);
+      document.getElementById('questionBox').classList.remove('hidden-question');
+      document.getElementById('stageInstruction').textContent = `${state.settings.revealSeconds}초 뒤 질문이 사라집니다. 핵심을 기억하세요.`;
+      document.getElementById('showQuestionOnceBtn').classList.add('hidden');
+      questionReshowUsed = false;
+      questionDisplayDone = false;
+      speechDone = !state.settings.speakQuestion;
+      answerSecondsLeft = state.settings.answerSeconds;
+      recordElapsedSeconds = 0;
+      updateAnswerTimer();
+      updateRecordClock();
+
+      recordClock = setInterval(() => {
+        recordElapsedSeconds += 1;
+        updateRecordClock();
+      }, 1000);
+
+      if (state.settings.speakQuestion && 'speechSynthesis' in window) {
+        speechDone = false;
+        speakQuestion(question);
+      } else {
+        speechDone = true;
+      }
+
+      questionHideTimeout = setTimeout(() => {
+        questionDisplayDone = true;
+        hideQuestionOnly();
+        maybeStartAnswerTimer();
+      }, state.settings.revealSeconds * 1000);
+    }
+
+    function isListeningQuestion(question) {
+      return /^Listen-and-summarize prompt:/i.test(question);
+    }
+
+    function spokenQuestion(question) {
+      return question.replace(/^Listen-and-summarize prompt:\s*/i, '');
+    }
+
+    function questionForStage(question) {
+      return isListeningQuestion(question)
+        ? 'Listen carefully. The passage will be read once.'
+        : question;
+    }
+
+    function cleanQuestionForDisplay(question) {
+      return question.replace(/^Listen-and-summarize prompt:\s*/i, 'Listen and summarize: ');
+    }
+
+    function speakQuestion(question) {
+      speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(spokenQuestion(question));
+      utterance.lang = 'en-US';
+      utterance.rate = Number(state.settings.speechRate) || 0.95;
+      const finish = () => {
+        speechDone = true;
+        maybeStartAnswerTimer();
+      };
+      utterance.onend = finish;
+      utterance.onerror = finish;
+      speechSynthesis.speak(utterance);
+    }
+
+    function hideQuestionOnly() {
+      document.getElementById('questionBox').classList.add('hidden-question');
+      document.getElementById('stageInstruction').textContent = speechDone
+        ? '질문은 사라졌습니다. 기억한 질문에 영어로 답하세요.'
+        : '질문은 사라졌습니다. 음성을 끝까지 듣고 답하세요.';
+      document.getElementById('showQuestionOnceBtn').classList.remove('hidden');
+    }
+
+    function maybeStartAnswerTimer() {
+      if (!questionDisplayDone || !speechDone || answerCountdown) return;
+      document.getElementById('stageInstruction').textContent = '질문은 사라졌습니다. 기억한 질문에 영어로 답하세요.';
+      startAnswerCountdown();
+    }
+
+    function startAnswerCountdown() {
+      answerCountdown = setInterval(() => {
+        answerSecondsLeft -= 1;
+        updateAnswerTimer();
+        if (answerSecondsLeft <= 0) {
+          clearInterval(answerCountdown);
+          answerCountdown = null;
+          document.getElementById('stageInstruction').textContent = '답변 시간이 끝났습니다.';
+          if (state.settings.autoStop) stopRecording();
+        }
+      }, 1000);
+    }
+
+    function showQuestionOnce() {
+      if (questionReshowUsed) return;
+      questionReshowUsed = true;
+      const box = document.getElementById('questionBox');
+      box.classList.remove('hidden-question');
+      document.getElementById('showQuestionOnceBtn').classList.add('hidden');
+      setTimeout(() => box.classList.add('hidden-question'), 2500);
+    }
+
+    function updateAnswerTimer() {
+      document.getElementById('answerTimer').textContent = formatTime(Math.max(0, answerSecondsLeft));
+    }
+
+    function updateRecordClock() {
+      document.getElementById('recordElapsed').textContent = formatTime(recordElapsedSeconds);
+    }
+
+    function formatTime(totalSeconds) {
+      const m = Math.floor(totalSeconds / 60);
+      const s = totalSeconds % 60;
+      return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function stopRecording() {
+      clearTimers();
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    }
+
+    function onRecordingStopped() {
+      currentAudioBlob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
+      if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+      currentAudioUrl = URL.createObjectURL(currentAudioBlob);
+      document.getElementById('audioPlayback').src = currentAudioUrl;
+      mediaStream?.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+      showReviewStage();
+    }
+
+    function showReviewStage() {
+      document.getElementById('recordingStage').classList.add('hidden');
+      document.getElementById('reviewStage').classList.remove('hidden');
+      document.getElementById('transcriptInput').value = '';
+      document.getElementById('confidenceSelect').value = 'shaky';
+      renderSelfChecks();
+    }
+
+    function renderSelfChecks() {
+      document.getElementById('selfCheckGrid').innerHTML = selfChecks.map(([id,label]) => `
+        <label class="check-item"><input type="checkbox" value="${id}" /><span>${escapeHtml(label)}</span></label>
+      `).join('');
+    }
+
+    function retryRecording() {
+      if (!confirm('현재 녹음을 지우고 같은 질문에 다시 답할까요?')) return;
+      prepareQuestionIntro();
+    }
+
+    function downloadAudio() {
+      if (!currentAudioBlob) return;
+      const day = getDay();
+      const a = document.createElement('a');
+      a.href = currentAudioUrl;
+      const ext = currentAudioBlob.type.includes('mp4') ? 'm4a' : currentAudioBlob.type.includes('ogg') ? 'ogg' : 'webm';
+      a.download = `SPA45_D${day.day}_Q${state.currentQuestionIndex + 1}.${ext}`;
+      a.click();
+    }
+
+    function collectSelfCheck() {
+      return [...document.querySelectorAll('#selfCheckGrid input:checked')].map(i => i.value);
+    }
+
+    function buildPrompt() {
+      const transcript = document.getElementById('transcriptInput').value.trim();
+      if (!transcript) {
+        alert('녹음을 들으며 실제 발화를 먼저 받아 적어 주세요.');
+        return;
+      }
+      const day = getDay();
+      const idx = state.currentQuestionIndex;
+      const question = day.questions[idx];
+      const checked = collectSelfCheck();
+      const confidence = document.getElementById('confidenceSelect').value;
+      const checkLabels = selfChecks.filter(([id]) => checked.includes(id)).map(([,label]) => `- ${label}`).join('\n') || '- 체크한 항목 없음';
+      const confidenceLabel = {success:'성공', shaky:'흔들림', retry:'재연습 필요'}[confidence];
+
+      const prompt = `[SPA 45 PROJECT — Week ${day.week}, Day ${day.day}]\n\n오늘의 훈련 목표:\n${day.goal}\n\n질문:\n${question}\n\n학습자가 녹음 후 직접 받아쓴 실제 답변:\n${transcript}\n\n자가평가:\n${checkLabels}\n- 이번 답변 체감: ${confidenceLabel}\n\n다음 원칙에 따라 수업을 진행하라.\n1. 먼저 질문을 제대로 이해하고 직접 답했는지 평가한다.\n2. 잘한 점을 구체적으로 먼저 짚는다.\n3. SPA 45점을 방해하는 핵심 문제를 최대 3개만 고른다. 문법 오류를 전부 나열하지 않는다.\n4. 실제 발화의 멈춤, 반복, 미완성 문장도 유창성 관점에서 평가한다.\n5. 학습자의 원래 생각과 실제 업무 경험을 유지하면서, 말하기 쉬운 개선 답변을 제시한다. 사실을 임의로 추가하지 않는다.\n6. 고친 이유를 한국어로 간단히 설명하고, 재사용할 표현 덩어리를 3~5개 뽑는다.\n7. 개선 답변을 통째로 암기시키지 않는다. 표현 덩어리와 답변 구조만 본 뒤 학습자가 다시 답하게 한다.\n8. 학습자가 재답변을 보내기 전에는 다음 모범답안이나 긴 설명을 추가하지 않는다.\n9. 재답변을 평가한 뒤에만, 현재 질문과 연결되는 새로운 꼬리 질문을 한 개 제시한다.\n10. 평가는 공식 SPA 채점이라고 단정하지 말고 훈련용 진단으로 표현한다.`;
+
+      document.getElementById('promptOutput').value = prompt;
+      saveCurrentAnswer(true);
+      document.getElementById('reviewStage').classList.add('hidden');
+      document.getElementById('promptStage').classList.remove('hidden');
+      updateNextButtons();
+    }
+
+    async function copyPrompt() {
+      const text = document.getElementById('promptOutput').value;
+      try {
+        await navigator.clipboard.writeText(text);
+        const btn = document.getElementById('copyPromptBtn');
+        const old = btn.textContent;
+        btn.textContent = '복사 완료!';
+        setTimeout(() => btn.textContent = old, 1400);
+      } catch {
+        document.getElementById('promptOutput').select();
+        document.execCommand('copy');
+      }
+    }
+
+    function saveCurrentAnswer(silent = false) {
+      const transcript = document.getElementById('transcriptInput').value.trim();
+      if (!transcript) {
+        alert('받아쓰기 내용을 입력해 주세요.');
+        return false;
+      }
+      const day = getDay();
+      const idx = state.currentQuestionIndex;
+      const record = {
+        id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+        savedAt: new Date().toISOString(),
+        day: day.day,
+        week: day.week,
+        questionIndex: idx,
+        question: day.questions[idx],
+        transcript,
+        checks: collectSelfCheck(),
+        confidence: document.getElementById('confidenceSelect').value,
+        recordingSeconds: recordElapsedSeconds
+      };
+      const existingIndex = state.answers.findIndex(r => r.day === day.day && r.questionIndex === idx);
+      if (existingIndex >= 0) {
+        record.id = state.answers[existingIndex].id;
+        state.answers[existingIndex] = record;
+      } else {
+        state.answers.push(record);
+      }
+      saveState();
+      if (!silent) alert('답변 기록을 저장했습니다. 음성은 저장되지 않습니다.');
+      return true;
+    }
+
+    function nextQuestion() {
+      const day = getDay();
+      if (state.currentQuestionIndex < day.questions.length - 1) {
+        state.currentQuestionIndex += 1;
+        saveState();
+        prepareQuestionIntro();
+      } else {
+        finishDay();
+      }
+    }
+
+    function skipQuestion() {
+      const day = getDay();
+      state.currentQuestionIndex = (state.currentQuestionIndex + 1) % day.questions.length;
+      saveState();
+      prepareQuestionIntro();
+    }
+
+    function updateNextButtons() {
+      const day = getDay();
+      const isLast = state.currentQuestionIndex >= day.questions.length - 1;
+      document.getElementById('nextQuestionBtn').classList.toggle('hidden', isLast);
+      document.getElementById('finishDayBtn').classList.toggle('hidden', !isLast);
+    }
+
+    function finishDay() {
+      const day = getDay();
+      if (!state.completedDays.includes(day.day)) state.completedDays.push(day.day);
+      state.completedDays.sort((a,b) => a-b);
+      saveState();
+      alert(`Day ${day.day} 수업을 완료했습니다!`);
+      document.getElementById('trainerCard').classList.add('hidden');
+      document.getElementById('sessionPlanCard').classList.remove('hidden');
+      renderHome();
+    }
+
+    function resetTrainerUI(clearCard = true) {
+      clearTimers();
+      if (clearCard) document.getElementById('trainerCard').classList.add('hidden');
+      document.getElementById('sessionPlanCard').classList.remove('hidden');
+    }
+
+    function clearTimers() {
+      clearInterval(answerCountdown);
+      clearInterval(recordClock);
+      clearTimeout(questionHideTimeout);
+      answerCountdown = null;
+      recordClock = null;
+      questionHideTimeout = null;
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+    }
+
+    function clearRecordingResources() {
+      clearTimers();
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try { mediaRecorder.stop(); } catch {}
+      }
+      mediaStream?.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+      mediaRecorder = null;
+      audioChunks = [];
+      currentAudioBlob = null;
+      if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+      currentAudioUrl = null;
+      document.getElementById('audioPlayback').removeAttribute('src');
+      document.getElementById('audioPlayback').load();
+    }
+
+    function renderRecords() {
+      const list = document.getElementById('recordsList');
+      document.getElementById('recordCountBadge').textContent = `답변 ${state.answers.length}개`;
+      document.getElementById('completeCountBadge').textContent = `완료 ${state.completedDays.length}일`;
+      if (!state.answers.length) {
+        list.innerHTML = '<p class="muted">아직 저장된 답변이 없습니다.</p>';
+        return;
+      }
+      list.innerHTML = [...state.answers].reverse().map(r => `
+        <div class="record-entry">
+          <div class="badge-row"><span class="badge accent">D${r.day} · Q${r.questionIndex + 1}</span><span class="badge">${confidenceText(r.confidence)}</span><span class="badge">${r.recordingSeconds || 0}초</span></div>
+          <strong>${escapeHtml(cleanQuestionForDisplay(r.question))}</strong>
+          <details><summary>받아쓰기 보기</summary><p style="white-space:pre-wrap;">${escapeHtml(r.transcript)}</p></details>
+          <button class="btn danger small" data-delete-record="${r.id}">이 기록 삭제</button>
+        </div>
+      `).join('');
+      list.querySelectorAll('[data-delete-record]').forEach(btn => btn.addEventListener('click', () => {
+        if (!confirm('이 답변 기록을 삭제할까요?')) return;
+        state.answers = state.answers.filter(r => r.id !== btn.dataset.deleteRecord);
+        saveState();
+        renderRecords();
+      }));
+    }
+
+    function confidenceText(value) {
+      return {success:'성공', shaky:'흔들림', retry:'재연습'}[value] || value;
+    }
+
+    function fillSettings() {
+      document.getElementById('startDateInput').value = state.settings.startDate;
+      document.getElementById('revealSecondsInput').value = state.settings.revealSeconds;
+      document.getElementById('answerSecondsInput').value = state.settings.answerSeconds;
+      document.getElementById('speechRateInput').value = String(state.settings.speechRate);
+      document.getElementById('speakQuestionToggle').checked = state.settings.speakQuestion;
+      document.getElementById('autoStopToggle').checked = state.settings.autoStop;
+    }
+
+    function saveSettings() {
+      state.settings.startDate = document.getElementById('startDateInput').value || getMondayISO(new Date());
+      state.settings.revealSeconds = clamp(Number(document.getElementById('revealSecondsInput').value), 2, 15);
+      state.settings.answerSeconds = clamp(Number(document.getElementById('answerSecondsInput').value), 20, 120);
+      state.settings.speechRate = Number(document.getElementById('speechRateInput').value);
+      state.settings.speakQuestion = document.getElementById('speakQuestionToggle').checked;
+      state.settings.autoStop = document.getElementById('autoStopToggle').checked;
+      saveState();
+      alert('설정을 저장했습니다.');
+      renderHome();
+      renderCalendar();
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function exportBackup() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SPA45_backup_${toISODate(new Date())}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importBackup(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const imported = JSON.parse(reader.result);
+          state = deepMerge(structuredClone(defaultState), imported);
+          saveState();
+          applyTheme();
+          renderAll();
+          alert('백업을 불러왔습니다.');
+        } catch {
+          alert('올바른 JSON 백업 파일이 아닙니다.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function resetAll() {
+      if (!confirm('모든 학습 기록과 설정을 초기화할까요? 이 작업은 되돌릴 수 없습니다.')) return;
+      localStorage.removeItem(STORAGE_KEY);
+      state = structuredClone(defaultState);
+      saveState();
+      applyTheme();
+      renderAll();
+    }
+
+    function toggleTheme() {
+      state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
+      saveState();
+      applyTheme();
+    }
+
+    function applyTheme() {
+      document.documentElement.dataset.theme = state.settings.theme;
+      document.getElementById('themeBtn').textContent = state.settings.theme === 'dark' ? '☀' : '◐';
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+    }
+
+    function renderAll() {
+      renderHome();
+      renderCalendar();
+      renderRecords();
+      fillSettings();
+    }
+
+    document.querySelectorAll('.nav button').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+    document.getElementById('themeBtn').addEventListener('click', toggleTheme);
+    document.getElementById('startSessionBtn').addEventListener('click', startSession);
+    document.getElementById('openCalendarBtn').addEventListener('click', () => switchView('calendar'));
+    document.getElementById('beginQuestionBtn').addEventListener('click', beginQuestion);
+    document.getElementById('skipQuestionBtn').addEventListener('click', skipQuestion);
+    document.getElementById('stopRecordingBtn').addEventListener('click', stopRecording);
+    document.getElementById('showQuestionOnceBtn').addEventListener('click', showQuestionOnce);
+    document.getElementById('retryRecordingBtn').addEventListener('click', retryRecording);
+    document.getElementById('downloadAudioBtn').addEventListener('click', downloadAudio);
+    document.getElementById('makePromptBtn').addEventListener('click', buildPrompt);
+    document.getElementById('saveAnswerBtn').addEventListener('click', saveCurrentAnswer);
+    document.getElementById('copyPromptBtn').addEventListener('click', copyPrompt);
+    document.getElementById('nextQuestionBtn').addEventListener('click', nextQuestion);
+    document.getElementById('finishDayBtn').addEventListener('click', finishDay);
+    document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+    document.getElementById('exportBtn').addEventListener('click', exportBackup);
+    document.getElementById('importInput').addEventListener('change', e => {
+      if (e.target.files?.[0]) importBackup(e.target.files[0]);
+      e.target.value = '';
+    });
+    document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+    window.addEventListener('beforeunload', () => {
+      clearTimers();
+      mediaStream?.getTracks().forEach(track => track.stop());
+    });
+
+    autoSelectToday();
+    applyTheme();
+    renderAll();
+  </script>
+</body>
+</html>
