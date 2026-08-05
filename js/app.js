@@ -7,7 +7,7 @@ const DB_VERSION = 1;
 const AUDIO_STORE = 'clips';
 
 const defaultState = {
-  contentVersion: '4.0-review-build',
+  contentVersion: '4.2-speakflow-photo',
   settings: {
     revealSec: 10,
     ttsRate: 0.95,
@@ -54,6 +54,8 @@ let listenPlays = 0;
 let passageCompleted = false;
 let passagePaused = false;
 let passageInterrupted = false;
+let passagePreparing = false;
+let speechRequestToken = 0;
 let questionHiddenAt = null;
 let revealInterval = null;
 let mediaRecorder = null;
@@ -133,12 +135,16 @@ function updateTheme() {
 }
 
 function stopAllSpeech() {
+  const wasPassage = activeSpeechKind === 'passage';
+  if (wasPassage) passageInterrupted = true;
+  speechRequestToken += 1;
   if ('speechSynthesis' in window) {
     try { speechSynthesis.cancel(); } catch (_) {}
   }
   activeUtterance = null;
   activeSpeechKind = '';
   passagePaused = false;
+  passagePreparing = false;
   $('stopQuestionSpeech')?.classList.add('hidden');
   syncPassageControls();
 }
@@ -489,7 +495,9 @@ function renderTaskNav() {
     });
     nav.appendChild(button);
   });
-  $('sessionProgress').style.width = `${Math.round((currentTaskIndex / Math.max(currentTasks.length, 1)) * 100)}%`;
+  const progressValue = Math.round((currentTaskIndex / Math.max(currentTasks.length, 1)) * 100);
+  $('sessionProgress').style.width = `${progressValue}%`;
+  $('sessionProgressTrack')?.setAttribute('aria-valuenow', String(progressValue));
   requestAnimationFrame(() => nav.querySelector('.active')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }));
 }
 
@@ -601,14 +609,11 @@ function renderVisual(task) {
   }
   area.innerHTML = `<div class="visual-wrap"><h3>${esc(task.title)}</h3>${visualHTML(task)}</div>`;
 }
-function visualHTML(v){if(v.kind==='bar')return barSVG(v);if(v.kind==='line')return lineSVG(v);if(v.kind==='pie')return pieSVG(v);if(v.kind==='table')return `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${v.headers.map(h=>`<th style="border:1px solid #d0d5dd;padding:8px;background:#f2f4f7">${esc(h)}</th>`).join('')}</tr></thead><tbody>${v.rows.map(r=>`<tr>${r.map(c=>`<td style="border:1px solid #d0d5dd;padding:8px;text-align:center">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;if(v.kind==='photo')return photoSVG(v.scene);if(v.kind==='product')return `<div class="product-card"><div class="product-icon">${productIcon(v.title)}</div><div><h2 style="margin:0 0 8px">${esc(v.title)}</h2><div class="feature-list">${v.features.map(f=>`<div class="feature">✓ ${esc(f)}</div>`).join('')}</div></div></div>`;return ''}
+function visualHTML(v){if(v.kind==='bar')return barSVG(v);if(v.kind==='line')return lineSVG(v);if(v.kind==='pie')return pieSVG(v);if(v.kind==='table')return `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${v.headers.map(h=>`<th style="border:1px solid #d0d5dd;padding:8px;background:#f2f4f7">${esc(h)}</th>`).join('')}</tr></thead><tbody>${v.rows.map(r=>`<tr>${r.map(c=>`<td style="border:1px solid #d0d5dd;padding:8px;text-align:center">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;if(v.kind==='photo')return `<figure class="photo-frame"><img class="photo-image" src="${esc(v.image||'')}" alt="${esc(v.title||'Photo description practice image')}" loading="lazy" decoding="async" /></figure>`;if(v.kind==='product')return `<div class="product-card"><div class="product-icon">${productIcon(v.title)}</div><div><h2 style="margin:0 0 8px">${esc(v.title)}</h2><div class="feature-list">${v.features.map(f=>`<div class="feature">✓ ${esc(f)}</div>`).join('')}</div></div></div>`;return ''}
 function productIcon(title){if(title.includes('sensor'))return'📡';if(title.includes('cabin'))return'🚘';if(title.includes('app'))return'📱';if(title.includes('charger'))return'🔌';return'📊'}
 function barSVG(v){const W=680,H=360,pL=58,pR=22,pT=48,pB=72,vals=[...v.values,...(v.values2||[])],max=Math.max(...vals)*1.16||1,plotW=W-pL-pR,plotH=H-pT-pB,groups=v.values.length,groupW=plotW/groups,dual=!!v.values2,bw=dual?groupW*.28:groupW*.5;let grid='',bars='';for(let g=0;g<=4;g++){const y=pT+plotH*g/4,val=Math.round(max*(1-g/4));grid+=`<line x1="${pL}" y1="${y}" x2="${W-pR}" y2="${y}" stroke="#e4e7ec"/><text x="${pL-8}" y="${y+4}" text-anchor="end" font-size="11" fill="#667085">${val}</text>`}v.values.forEach((val,i)=>{const center=pL+i*groupW+groupW/2;const draw=(x,value,color)=>{const h=plotH*value/max,y=pT+plotH-h;return `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="6" fill="${color}"/><text x="${x+bw/2}" y="${y-6}" text-anchor="middle" font-size="11" fill="#344054">${value}${esc(v.unit||'')}</text>`};bars+=draw(center-(dual?bw+3:bw/2),val,'#3157d5');if(dual)bars+=draw(center+3,v.values2[i],'#f79009');bars+=`<text x="${center}" y="${H-pB+22}" text-anchor="middle" font-size="11" fill="#475467">${esc(v.labels[i])}</text>`});const legend=dual?`<g transform="translate(${pL} 20)"><rect width="13" height="13" rx="3" fill="#3157d5"/><text x="19" y="11" font-size="11" fill="#344054">${esc(v.series1||'Series 1')}</text><rect x="170" width="13" height="13" rx="3" fill="#f79009"/><text x="189" y="11" font-size="11" fill="#344054">${esc(v.series2||'Series 2')}</text></g>`:`<text x="${pL}" y="24" font-size="11" fill="#344054">Unit: ${esc(v.unit||'value')}</text>`;return `<svg viewBox="0 0 ${W} ${H}" class="chart-svg" role="img">${legend}${grid}<line x1="${pL}" y1="${pT+plotH}" x2="${W-pR}" y2="${pT+plotH}" stroke="#98a2b3"/>${bars}</svg>`}
 function lineSVG(v){const W=680,H=350,pL=58,pR=24,pT=52,pB=64,all=[...v.values,...(v.values2||[])],rawMin=Math.min(...all),rawMax=Math.max(...all),range=rawMax-rawMin||1,min=Math.max(0,rawMin-range*.18),max=rawMax+range*.18,plotW=W-pL-pR,plotH=H-pT-pB,step=plotW/(v.values.length-1);const yOf=val=>pT+plotH-(val-min)/(max-min||1)*plotH;const path=vals=>vals.map((val,i)=>`${i?'L':'M'} ${pL+i*step} ${yOf(val)}`).join(' ');let grid='';for(let g=0;g<=4;g++){const y=pT+plotH*g/4,val=Math.round(max-(max-min)*g/4);grid+=`<line x1="${pL}" y1="${y}" x2="${W-pR}" y2="${y}" stroke="#e4e7ec"/><text x="${pL-8}" y="${y+4}" text-anchor="end" font-size="11" fill="#667085">${val}</text>`}const dots=(vals,color)=>vals.map((val,i)=>`<circle cx="${pL+i*step}" cy="${yOf(val)}" r="4.5" fill="${color}"/><text x="${pL+i*step}" y="${yOf(val)-9}" text-anchor="middle" font-size="10" fill="#475467">${val}</text>`).join('');const labels=v.labels.map((lab,i)=>`<text x="${pL+i*step}" y="${H-pB+23}" text-anchor="middle" font-size="11" fill="#475467">${esc(lab)}</text>`).join('');const second=v.values2?`<path d="${path(v.values2)}" fill="none" stroke="#f79009" stroke-width="4"/>${dots(v.values2,'#f79009')}`:'';const legend=`<g transform="translate(${pL} 20)"><line x1="0" y1="6" x2="24" y2="6" stroke="#3157d5" stroke-width="4"/><text x="31" y="10" font-size="11" fill="#344054">${esc(v.series1||v.unit||'Series 1')}</text>${v.values2?`<line x1="190" y1="6" x2="214" y2="6" stroke="#f79009" stroke-width="4"/><text x="221" y="10" font-size="11" fill="#344054">${esc(v.series2||'Series 2')}</text>`:''}</g>`;return `<svg viewBox="0 0 ${W} ${H}" class="chart-svg" role="img">${legend}${grid}<line x1="${pL}" y1="${pT+plotH}" x2="${W-pR}" y2="${pT+plotH}" stroke="#98a2b3"/><path d="${path(v.values)}" fill="none" stroke="#3157d5" stroke-width="4"/>${dots(v.values,'#3157d5')}${second}${labels}</svg>`}
 function pieSVG(v){const total=v.values.reduce((a,b)=>a+b,0),colors=['#3157d5','#7f56d9','#f79009','#12b76a','#f04438'];let acc=0,circles='';v.values.forEach((val,i)=>{const pct=val/total*100;circles+=`<circle r="70" cx="125" cy="125" fill="transparent" stroke="${colors[i%colors.length]}" stroke-width="70" stroke-dasharray="${pct} ${100-pct}" stroke-dashoffset="${-acc}" transform="rotate(-90 125 125)" pathLength="100"/>`;acc+=pct});const legend=v.labels.map((l,i)=>`<g transform="translate(275 ${52+i*42})"><rect width="16" height="16" rx="4" fill="${colors[i%colors.length]}"/><text x="26" y="13" font-size="13" fill="#344054">${esc(l)}: ${v.values[i]}${esc(v.unit||'')}</text></g>`).join('');return `<svg viewBox="0 0 620 260" class="chart-svg">${circles}<circle cx="125" cy="125" r="36" fill="#fff"/>${legend}</svg>`}
-function people(x,y,emoji){return `<circle cx="${x}" cy="${y}" r="20" fill="#ffd6ae"/><text x="${x}" y="${y+7}" text-anchor="middle" font-size="22">${emoji||'🙂'}</text><rect x="${x-18}" y="${y+20}" width="36" height="48" rx="13" fill="#6172f3"/>`}
-function photoSVG(scene){const base=`<svg viewBox="0 0 680 300" class="photo-scene" role="img"><rect width="680" height="300" fill="#eaf2ff"/><rect y="230" width="680" height="70" fill="#d1fadf"/>`;const person=(x,y,emoji,color='#6172f3')=>`<circle cx="${x}" cy="${y}" r="21" fill="#ffd6ae"/><text x="${x}" y="${y+7}" text-anchor="middle" font-size="22">${emoji||'🙂'}</text><rect x="${x-19}" y="${y+21}" width="38" height="55" rx="13" fill="${color}"/>`;let c='';if(scene==='meeting')c=`<rect x="135" y="165" width="410" height="55" rx="12" fill="#98a2b3"/>${person(175,103,'🧑‍💼')}${person(300,95,'👩‍🔧','#12b76a')}${person(430,103,'🧑‍🔬','#7f56d9')}<rect x="255" y="28" width="170" height="88" rx="6" fill="#fff" stroke="#3157d5"/><polyline points="275,98 310,72 345,83 392,48" fill="none" stroke="#3157d5" stroke-width="4"/><rect x="205" y="175" width="65" height="35" fill="#101828"/><text x="500" y="150" font-size="26">📄</text>`;else if(scene==='inspection')c=`<rect x="205" y="125" width="285" height="82" rx="25" fill="#344054"/><circle cx="260" cy="207" r="29" fill="#101828"/><circle cx="430" cy="207" r="29" fill="#101828"/>${person(105,120,'👷','#f79009')}${person(565,120,'🧑‍🔧','#12b76a')}<rect x="315" y="82" width="78" height="45" rx="8" fill="#84adff"/><text x="325" y="75" font-size="25">📋</text><path d="M118 190 L190 165" stroke="#f04438" stroke-width="5"/>`;else if(scene==='traffic')c=`<rect x="0" y="185" width="680" height="115" fill="#667085"/><rect x="315" y="0" width="55" height="300" fill="#667085"/><rect x="65" y="205" width="145" height="48" rx="16" fill="#f79009"/><rect x="440" y="122" width="145" height="48" rx="16" fill="#3157d5"/><text x="340" y="150" text-anchor="middle" font-size="48">🚦</text><text x="260" y="250" font-size="38">🚶</text><text x="390" y="235" font-size="32">🚲</text>`;else if(scene==='office')c=`<rect x="70" y="165" width="535" height="62" rx="10" fill="#98a2b3"/>${person(190,110,'🧑‍💻')}<rect x="255" y="88" width="145" height="90" rx="6" fill="#101828"/><polyline points="275,158 305,122 340,139 380,103" fill="none" stroke="#84adff" stroke-width="4"/><text x="475" y="137" font-size="35">📊</text><text x="535" y="205" font-size="28">📝</text>`;else if(scene==='charging')c=`<rect x="165" y="135" width="300" height="78" rx="24" fill="#475467"/><circle cx="225" cy="213" r="29" fill="#101828"/><circle cx="410" cy="213" r="29" fill="#101828"/><rect x="515" y="65" width="76" height="155" rx="12" fill="#fff" stroke="#3157d5" stroke-width="4"/><text x="553" y="140" text-anchor="middle" font-size="39">⚡</text><path d="M515 168 Q475 157 470 132" fill="none" stroke="#101828" stroke-width="6"/>${person(95,135,'🧑','#7f56d9')}`;else if(scene==='factory')c=`<rect x="35" y="180" width="610" height="38" fill="#98a2b3"/><text x="90" y="170" font-size="65">🦾</text><text x="255" y="170" font-size="60">⚙️</text><text x="420" y="170" font-size="65">🦾</text>${person(595,125,'👷','#f79009')}<rect x="285" y="55" width="120" height="68" fill="#fff" stroke="#3157d5"/><text x="345" y="97" text-anchor="middle" font-size="25">STATUS</text>`;else if(scene==='presentation')c=`<rect x="315" y="30" width="290" height="155" rx="8" fill="#fff" stroke="#98a2b3"/><polyline points="345,155 390,115 430,130 485,77 560,95" fill="none" stroke="#3157d5" stroke-width="5"/>${person(190,130,'🧑‍🏫','#7f56d9')}<text x="120" y="258" font-size="35">👥 👥 👥</text><rect x="210" y="190" width="70" height="42" fill="#101828"/>`;else if(scene==='customer')c=`<rect x="105" y="175" width="470" height="52" rx="12" fill="#98a2b3"/>${person(195,115,'🙍','#f04438')}${person(485,115,'🧑‍💼','#3157d5')}<text x="340" y="105" text-anchor="middle" font-size="42">💬</text><rect x="305" y="155" width="70" height="45" fill="#fff" stroke="#3157d5"/><text x="340" y="183" text-anchor="middle" font-size="20">Report</text>`;else if(scene==='rain')c=`<rect x="0" y="195" width="680" height="105" fill="#667085"/><rect x="190" y="150" width="290" height="72" rx="22" fill="#3157d5"/><circle cx="250" cy="222" r="28" fill="#101828"/><circle cx="420" cy="222" r="28" fill="#101828"/><text x="70" y="80" font-size="46">🌧️</text><text x="550" y="80" font-size="46">🌧️</text><text x="520" y="205" font-size="38">⚠️</text>`;else if(scene==='acoustic')c=`<rect x="170" y="150" width="300" height="75" rx="24" fill="#344054"/><circle cx="230" cy="225" r="28" fill="#101828"/><circle cx="410" cy="225" r="28" fill="#101828"/>${person(90,135,'🧑‍🔧','#12b76a')}${person(570,135,'🧑‍💻','#7f56d9')}<path d="M165 105 q28 -22 56 0 q28 -22 56 0" fill="none" stroke="#f04438" stroke-width="5"/><rect x="500" y="58" width="105" height="70" rx="6" fill="#101828"/><polyline points="515,112 535,88 558,100 585,73" fill="none" stroke="#84adff" stroke-width="4"/><text x="300" y="75" font-size="30">🎙️</text>`;else if(scene==='control')c=`${person(145,150,'🧑‍💻','#3157d5')}${person(535,150,'👩‍🔧','#12b76a')}<rect x="215" y="45" width="250" height="130" rx="8" fill="#101828"/><polyline points="235,145 275,105 315,120 355,78 395,96 445,60" fill="none" stroke="#84adff" stroke-width="5"/><circle cx="270" cy="82" r="8" fill="#f04438"/><text x="340" y="205" text-anchor="middle" font-size="30">⚠️ 📋</text>`;else c=`${person(220,120,'🧑‍🏫')}${person(450,120,'👩‍🔧','#12b76a')}<rect x="180" y="190" width="310" height="38" rx="8" fill="#98a2b3"/><text x="340" y="70" text-anchor="middle" font-size="38">🛠️ 📊</text>`;return base+c+'</svg>'}
-
 function renderListen(task) {
   const area = $('listenArea');
   if (task.type !== 'listening') {
@@ -628,7 +633,7 @@ function renderListen(task) {
         <button class="btn secondary" id="passageStop" type="button" disabled>■ 중지</button>
         <button class="btn secondary" id="passageRestart" type="button">↺ 처음부터</button>
       </div>
-      <div class="listen-status" id="listenStatus">0/${task.maxPlays || 2}회 재생</div>
+      <div class="listen-status" id="listenStatus" role="status" aria-live="polite">0/${task.maxPlays || 2}회 재생</div>
       <button class="btn secondary small hidden" id="showPassage" type="button">지문 확인</button>
       <div class="notice hidden" id="passageText"></div>
     </div>`;
@@ -694,33 +699,73 @@ async function ensureVoices() {
   }
 }
 
-function speakText(text, kind, onEnd = () => {}) {
+function speakText(text, kind, onEnd = () => {}, onStart = () => {}) {
   if (!('speechSynthesis' in window)) {
     onEnd();
     return Promise.resolve();
   }
+
   stopAllSpeech();
+  const requestToken = ++speechRequestToken;
+  activeSpeechKind = kind;
+  activeUtterance = null;
+
+  if (kind === 'passage') {
+    passagePreparing = true;
+    passagePaused = false;
+    syncPassageControls();
+  }
+
   return new Promise(async resolve => {
     await ensureVoices();
+    if (requestToken !== speechRequestToken || activeSpeechKind !== kind) {
+      resolve();
+      return;
+    }
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
     utterance.rate = Number(state.settings.ttsRate) || 0.95;
     utterance.voice = selectedVoice(kind);
     activeUtterance = utterance;
-    activeSpeechKind = kind;
+
     if (kind === 'question') $('stopQuestionSpeech').classList.remove('hidden');
+
     const finish = () => {
-      if (activeUtterance === utterance) {
-        activeUtterance = null;
-        activeSpeechKind = '';
+      if (requestToken !== speechRequestToken) {
+        resolve();
+        return;
+      }
+      if (activeUtterance === utterance) activeUtterance = null;
+      if (activeSpeechKind === kind) activeSpeechKind = '';
+      if (kind === 'passage') {
+        passagePreparing = false;
+        passagePaused = false;
+        syncPassageControls();
       }
       if (kind === 'question') $('stopQuestionSpeech').classList.add('hidden');
       onEnd();
       resolve();
     };
+
+    utterance.onstart = () => {
+      if (requestToken !== speechRequestToken) return;
+      if (kind === 'passage') {
+        passagePreparing = false;
+        passagePaused = false;
+        syncPassageControls();
+      }
+      onStart();
+    };
     utterance.onend = finish;
     utterance.onerror = finish;
-    setTimeout(() => speechSynthesis.speak(utterance), 40);
+
+    try {
+      speechSynthesis.speak(utterance);
+      if (kind === 'passage') syncPassageControls();
+    } catch (_) {
+      finish();
+    }
   });
 }
 
@@ -732,15 +777,44 @@ if ('speechSynthesis' in window) {
 function syncPassageControls() {
   const play = $('passagePlay');
   if (!play) return;
-  const speakingPassage = activeSpeechKind === 'passage' && !!activeUtterance;
-  play.textContent = passagePaused ? '▶ 이어 듣기' : speakingPassage ? '재생 중' : '▶ 지문 듣기';
-  play.disabled = speakingPassage && !passagePaused;
-  $('passagePause').disabled = !speakingPassage || passagePaused;
-  $('passageStop').disabled = !speakingPassage;
+
   const task = currentTasks[currentTaskIndex];
   const max = task?.maxPlays || 2;
+  const passageActive = activeSpeechKind === 'passage';
+  const speakingPassage = passageActive && !!activeUtterance && !passagePaused && !passagePreparing;
+  const canStartNew = listenPlays < max;
+
+  if (passagePaused) {
+    play.textContent = '▶ 이어 듣기';
+    play.disabled = false;
+  } else if (passagePreparing) {
+    play.textContent = '음성 준비 중…';
+    play.disabled = true;
+  } else if (speakingPassage) {
+    play.textContent = '재생 중';
+    play.disabled = true;
+  } else {
+    play.textContent = '▶ 지문 듣기';
+    play.disabled = !canStartNew;
+  }
+
+  $('passagePause').disabled = !speakingPassage;
+  $('passagePause').setAttribute('aria-pressed', passagePaused ? 'true' : 'false');
+  $('passageStop').disabled = !passageActive;
+  $('passageRestart').disabled = passagePreparing || !canStartNew;
+
   if ($('listenStatus')) {
-    const suffix = passagePaused ? ' · 일시정지' : speakingPassage ? ' · 재생 중' : passageCompleted ? ' · 재생 완료' : '';
+    const suffix = passagePreparing
+      ? ' · 음성 준비 중'
+      : passagePaused
+        ? ' · 일시정지'
+        : speakingPassage
+          ? ' · 재생 중'
+          : passageCompleted
+            ? ' · 재생 완료'
+            : passageInterrupted
+              ? ' · 중지됨'
+              : '';
     $('listenStatus').textContent = `${listenPlays}/${max}회 재생${suffix}`;
   }
 }
@@ -748,56 +822,79 @@ function syncPassageControls() {
 function stopPassage(manual = false) {
   if (activeSpeechKind !== 'passage') return;
   if (manual && !passageCompleted) passageInterrupted = true;
+  speechRequestToken += 1;
   try { speechSynthesis.cancel(); } catch (_) {}
   activeUtterance = null;
   activeSpeechKind = '';
   passagePaused = false;
+  passagePreparing = false;
   syncPassageControls();
 }
 
 function pausePassage() {
-  if (activeSpeechKind !== 'passage' || !activeUtterance) return;
-  speechSynthesis.pause();
-  passagePaused = true;
+  if (activeSpeechKind !== 'passage' || !activeUtterance || passagePreparing || passagePaused) return;
+  try {
+    speechSynthesis.pause();
+    passagePaused = true;
+  } catch (_) {}
   syncPassageControls();
 }
 
 function resumePassage() {
-  if (!passagePaused) return;
-  speechSynthesis.resume();
-  passagePaused = false;
+  if (activeSpeechKind !== 'passage' || !passagePaused) return;
+  try {
+    speechSynthesis.resume();
+    passagePaused = false;
+  } catch (_) {}
   syncPassageControls();
 }
 
 function playPassage(task, restart = false) {
   const max = task.maxPlays || 2;
+
   if (passagePaused && !restart) {
     resumePassage();
     return;
   }
-  if (restart && listenPlays >= max) {
-    toast('이 지문의 재생 가능 횟수를 모두 사용했습니다.');
-    return;
-  }
+
+  if (passagePreparing) return;
+
   if (activeSpeechKind === 'passage') {
     if (!restart) return;
+    if (listenPlays >= max) {
+      toast('이 지문의 재생 가능 횟수를 모두 사용했습니다.');
+      return;
+    }
     stopPassage(true);
   }
+
   if (listenPlays >= max) {
     toast('이 지문의 재생 가능 횟수를 모두 사용했습니다.');
     return;
   }
+
   listenPlays += 1;
   passageCompleted = false;
   passageInterrupted = false;
-  speakText(task.passage, 'passage', () => {
-    if (passageInterrupted) return;
-    passageCompleted = true;
-    passagePaused = false;
-    $('revealBtn').disabled = false;
-    syncPassageControls();
-  });
+  passagePreparing = true;
   syncPassageControls();
+
+  speakText(
+    task.passage,
+    'passage',
+    () => {
+      if (passageInterrupted) {
+        syncPassageControls();
+        return;
+      }
+      passageCompleted = true;
+      passagePaused = false;
+      passagePreparing = false;
+      $('revealBtn').disabled = false;
+      syncPassageControls();
+    },
+    () => syncPassageControls()
+  );
 }
 
 function clearReveal() {
@@ -1215,6 +1312,7 @@ function finishSession() {
   $('taskCard').classList.add('hidden');
   $('sessionEnd').classList.remove('hidden');
   $('sessionProgress').style.width = '100%';
+  $('sessionProgressTrack')?.setAttribute('aria-valuenow', '100');
   syncMobileActionBar();
   window.scrollTo({ top: Math.max(0, $('sessionEnd').offsetTop - 20), behavior: 'smooth' });
 }
@@ -1559,69 +1657,13 @@ $('resetData').addEventListener('click', async () => {
   toast('전체 초기화가 완료되었습니다.');
 });
 
-function syncMobileActionBar() {
-  const bar = $('mobileActionBar');
-  if (!bar) return;
-  const practiceActive = $('panel-practice')?.classList.contains('active');
-  const taskVisible = practiceActive && currentTasks.length > 0 && !$('practiceArea')?.classList.contains('hidden') && !$('taskCard')?.classList.contains('hidden');
-  bar.classList.toggle('hidden', !taskVisible);
-  if (!taskVisible) return;
-  const task = currentTasks[currentTaskIndex];
-  $('mobileStep').textContent = `${currentTaskIndex + 1}/${currentTasks.length}`;
-  $('mobileTaskName').textContent = stage === 'evaluation' ? '수행결과 평가' : taskTypeName(task);
-  $('mobileSessionProgress').textContent = `${currentTaskIndex + 1} / ${currentTasks.length}`;
+function syncMobileActionBar() {}
 
-  const questionButton = $('mobileReveal');
-  const recordButton = $('mobileRecord');
-  const nextButton = $('mobileNext');
-  const recording = mediaRecorder?.state === 'recording';
-
-  if (stage === 'evaluation') {
-    questionButton.textContent = '답변 화면';
-    questionButton.disabled = false;
-    recordButton.textContent = '평가 중';
-    recordButton.disabled = true;
-    recordButton.className = 'mobile-action secondary';
-    nextButton.textContent = '저장·다음';
-    nextButton.disabled = !currentOutcome;
-  } else {
-    if (!questionSeen) {
-      questionButton.textContent = '질문 보기';
-      questionButton.disabled = $('revealBtn').disabled;
-    } else if (!replayUsed && !$('revealBtn').classList.contains('hidden')) {
-      questionButton.textContent = '1회 다시 보기';
-      questionButton.disabled = $('revealBtn').disabled;
-    } else {
-      questionButton.textContent = '질문 확인 완료';
-      questionButton.disabled = true;
-    }
-    recordButton.textContent = recording ? '■ 녹음 종료' : '● 녹음 시작';
-    recordButton.className = `mobile-action ${recording ? 'secondary' : 'danger'}`;
-    recordButton.disabled = $('recordToggle').disabled;
-    nextButton.textContent = '평가로';
-    nextButton.disabled = recording;
-  }
-}
-
-$('mobileReveal').addEventListener('click', () => {
-  if (stage === 'evaluation') showAnswer();
-  else $('revealBtn')?.click();
-});
-$('mobileRecord').addEventListener('click', () => {
-  if (stage === 'answer') $('recordToggle')?.click();
-});
-$('mobileNext').addEventListener('click', () => {
-  if (stage === 'evaluation') $('nextTask')?.click();
-  else $('goEvaluation')?.click();
-});
-
-window.addEventListener('resize', syncMobileActionBar);
 window.addEventListener('beforeunload', () => {
   stopAllSpeech();
   stopLiveResources();
   revokeClipUrls();
 });
-setInterval(syncMobileActionBar, 300);
 
 (async function boot() {
   renderCourse();

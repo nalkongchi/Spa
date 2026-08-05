@@ -431,8 +431,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Engineering team meeting",
         "kind": "photo",
-        "scene": "meeting",
-        "question": "Describe what is happening in the scene. What do you think the team may be discussing?",
+        "question": "Describe the engineering meeting, identify the technical clues, and explain how the team should reach a decision.",
         "questions": [
           {
             "role": "main",
@@ -441,15 +440,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What details suggest that this is a formal team discussion?"
+            "label": "정보 확인·추론",
+            "text": "What evidence suggests that the group is discussing a technical design rather than a general business topic?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What do you think the team may be discussing?"
+            "text": "How could the team make sure everyone’s concerns are considered before making a decision?"
           }
-        ]
+        ],
+        "image": "./images/01.png"
       },
       {
         "type": "visual",
@@ -551,8 +551,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Vehicle inspection area",
         "kind": "photo",
-        "scene": "inspection",
-        "question": "Describe the scene and explain what safety precautions the workers should take.",
+        "question": "Describe the vehicle inspection, identify the areas being checked, and explain why the findings should be documented.",
         "questions": [
           {
             "role": "main",
@@ -561,15 +560,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What safety or quality checks should the workers complete?"
+            "label": "정보 확인·추론",
+            "text": "Which parts of the vehicle appear to be receiving attention?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What practical conclusion can you draw from this visual?"
+            "text": "Why is it important to record the inspection findings before the vehicle leaves the area?"
           }
-        ]
+        ],
+        "image": "./images/02.png"
       },
       {
         "type": "situation",
@@ -859,8 +859,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Busy urban intersection",
         "kind": "photo",
-        "scene": "traffic",
-        "question": "Describe the scene. What problems can you see, and what solution would you suggest?",
+        "question": "Describe the intersection, identify the most vulnerable road users, and suggest a safety improvement.",
         "questions": [
           {
             "role": "main",
@@ -869,15 +868,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What is the most serious problem visible in this scene?"
+            "label": "정보 확인·추론",
+            "text": "Which road users appear most vulnerable in this scene, and why?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What problems can you see, and what solution would you suggest?"
+            "text": "What change would most improve both safety and traffic flow at this intersection?"
           }
-        ]
+        ],
+        "image": "./images/03.png"
       }
     ],
     "order": 10
@@ -1142,8 +1142,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Employee working with test data",
         "kind": "photo",
-        "scene": "office",
-        "question": "Describe what the person is doing. What skills are likely needed for this task?",
+        "question": "Describe the employee’s work, explain what information may be compared, and identify a necessary verification step.",
         "questions": [
           {
             "role": "main",
@@ -1152,15 +1151,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What skills are likely needed for the work shown?"
+            "label": "정보 확인·추론",
+            "text": "What kinds of information does the employee appear to be comparing on the two screens?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What skills are likely needed for this task?"
+            "text": "What should the employee verify before reporting a conclusion based on the data?"
           }
-        ]
+        ],
+        "image": "./images/04.png"
       },
       {
         "type": "situation",
@@ -1430,8 +1430,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Public EV charging station",
         "kind": "photo",
-        "scene": "charging",
-        "question": "Describe the scene and discuss one advantage and one disadvantage of public charging stations.",
+        "question": "Describe the charging station, explain the visible capacity problem, and suggest a way to reduce waiting.",
         "questions": [
           {
             "role": "main",
@@ -1440,15 +1439,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What advantage and disadvantage does this facility have?"
+            "label": "정보 확인·추론",
+            "text": "What details suggest that demand may be higher than the available charging capacity?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What practical conclusion can you draw from this visual?"
+            "text": "What could the station operator do to reduce waiting time for drivers?"
           }
-        ]
+        ],
+        "image": "./images/05.png"
       },
       {
         "type": "situation",
@@ -1819,8 +1819,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Automated production line",
         "kind": "photo",
-        "scene": "factory",
-        "question": "Describe the scene. How might automation change the workers' responsibilities?",
+        "question": "Describe the production line, compare the roles of robots and workers, and identify work that should remain under human supervision.",
         "questions": [
           {
             "role": "main",
@@ -1829,15 +1828,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "How might automation change the workers’ responsibilities?"
+            "label": "정보 확인·추론",
+            "text": "What tasks are being performed by the robots, and what are the workers doing?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "How might automation change the workers' responsibilities?"
+            "text": "Which safety or quality checks should remain under human supervision?"
           }
-        ]
+        ],
+        "image": "./images/06.png"
       },
       {
         "type": "situation",
@@ -2124,8 +2124,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Technical presentation",
         "kind": "photo",
-        "scene": "presentation",
-        "question": "Describe the scene. What should the presenter do to make the explanation clear?",
+        "question": "Describe the presentation, interpret the audience’s response, and suggest how the presenter could improve clarity.",
         "questions": [
           {
             "role": "main",
@@ -2134,15 +2133,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What could the presenter do to make the explanation clearer?"
+            "label": "정보 확인·추론",
+            "text": "How do the audience members appear to be responding to the presentation?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What should the presenter do to make the explanation clear?"
+            "text": "What could the presenter do to explain the technical information more clearly?"
           }
-        ]
+        ],
+        "image": "./images/07.png"
       },
       {
         "type": "situation",
@@ -2327,8 +2327,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Vehicle interior acoustic test",
         "kind": "photo",
-        "scene": "acoustic",
-        "question": "Describe the acoustic test scene. What information do you think the engineers are collecting?",
+        "question": "Describe the acoustic test, identify the equipment, and explain what the engineer may learn from the data.",
         "questions": [
           {
             "role": "main",
@@ -2337,15 +2336,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What measurements or observations might the engineers record?"
+            "label": "정보 확인·추론",
+            "text": "What test equipment can you identify, and where is it positioned?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What information do you think the engineers are collecting?"
+            "text": "What could the engineer learn by comparing the microphone data with the graphs on the laptop?"
           }
-        ]
+        ],
+        "image": "./images/08.png"
       },
       {
         "type": "visual",
@@ -2464,8 +2464,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Customer at a service center",
         "kind": "photo",
-        "scene": "customer",
-        "question": "Describe the scene and explain how the employee should handle the conversation.",
+        "question": "Describe the service-center conversation, interpret the customer’s concern, and explain how the employee should confirm the issue.",
         "questions": [
           {
             "role": "main",
@@ -2474,15 +2473,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "How should the employee handle the conversation?"
+            "label": "정보 확인·추론",
+            "text": "What clues suggest that the customer may be explaining a problem or concern?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What practical conclusion can you draw from this visual?"
+            "text": "How should the service employee confirm the issue before promising a solution?"
           }
-        ]
+        ],
+        "image": "./images/09.png"
       },
       {
         "type": "visual",
@@ -2751,8 +2751,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Road test in rainy weather",
         "kind": "photo",
-        "scene": "rain",
-        "question": "Describe the scene. What additional risks should the test team consider?",
+        "question": "Describe the rainy road test, identify conditions that may affect the results, and suggest a safer test procedure.",
         "questions": [
           {
             "role": "main",
@@ -2761,15 +2760,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What additional risks should the team consider?"
+            "label": "정보 확인·추론",
+            "text": "What weather and road conditions could affect the test results?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What additional risks should the test team consider?"
+            "text": "How should the driver change the test procedure to keep the road test both safe and useful?"
           }
-        ]
+        ],
+        "image": "./images/10.png"
       }
     ],
     "order": 29
@@ -3146,8 +3146,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Hands-on employee workshop",
         "kind": "photo",
-        "scene": "workshop",
-        "question": "Describe the scene and explain why hands-on training can be useful.",
+        "question": "Describe the workshop, explain how the participants are involved, and discuss the value of hands-on training.",
         "questions": [
           {
             "role": "main",
@@ -3156,15 +3155,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What important details can you see in the scene?"
+            "label": "정보 확인·추론",
+            "text": "What role does the instructor appear to have, and how are the participants involved?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What practical conclusion can you draw from this visual?"
+            "text": "Why can hands-on training be more effective than a lecture for this kind of technical work?"
           }
-        ]
+        ],
+        "image": "./images/11.png"
       },
       {
         "type": "visual",
@@ -3341,8 +3341,7 @@ const SESSIONS = [
         "type": "visual",
         "title": "Engineering control room",
         "kind": "photo",
-        "scene": "control",
-        "question": "Describe the control-room scene. What should the team check before making a decision?",
+        "question": "Describe the control room, identify the information being monitored, and explain what should be verified before action is taken.",
         "questions": [
           {
             "role": "main",
@@ -3351,15 +3350,16 @@ const SESSIONS = [
           },
           {
             "role": "followUp",
-            "label": "정보 확인·비교",
-            "text": "What information should the team verify before acting?"
+            "label": "정보 확인·추론",
+            "text": "What types of information are the employees monitoring on the screens?"
           },
           {
             "role": "followUp",
             "label": "해석·의견",
-            "text": "What should the team check before making a decision?"
+            "text": "What should the team verify before changing the production process?"
           }
-        ]
+        ],
+        "image": "./images/12.png"
       }
     ],
     "mock5": true,

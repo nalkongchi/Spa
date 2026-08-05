@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#172554" />
+  <meta name="theme-color" content="#F7FAFF" />
   <title>SPA 45점 목표 5주 트레이너</title>
   <link rel="stylesheet" href="./css/app.css" />
 </head>
@@ -53,7 +53,7 @@
             </div>
             <button class="btn secondary small" id="backCourse" type="button">과정 보기</button>
           </div>
-          <div class="progress"><div id="sessionProgress"></div></div>
+          <div class="progress" id="sessionProgressTrack" role="progressbar" aria-label="현재 회차 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="sessionProgress"></div></div>
           <div class="task-nav-wrap">
             <button class="nav-arrow left" id="navLeft" type="button" aria-label="이전 문제 번호">‹</button>
             <div class="task-nav" id="taskNav"></div>
@@ -231,16 +231,6 @@
       </div>
     </section>
   </div>
-
-  <div class="mobile-action-bar hidden" id="mobileActionBar" aria-label="모바일 훈련 작업 바">
-    <div class="mobile-action-meta"><b id="mobileStep">0/0</b><span id="mobileTaskName">훈련</span></div>
-    <div class="mobile-action-buttons">
-      <button class="mobile-action secondary" id="mobileReveal" type="button">질문 보기</button>
-      <button class="mobile-action danger" id="mobileRecord" type="button">녹음 시작</button>
-      <button class="mobile-action good" id="mobileNext" type="button">평가로</button>
-    </div>
-  </div>
-
   <script src="./vendor/jszip.min.js"></script>
   <script src="./data/content.js"></script>
   <script src="./js/app.js"></script>
