@@ -1,4 +1,4 @@
-/* SPA 45 curriculum and fixed media metadata. Edit content here without touching app logic. */
+/* SPA 45 curriculum data. Edit questions and visual data here without touching app logic. */
 
 const SESSIONS = [
   {
@@ -518,7 +518,7 @@ const SESSIONS = [
     "slot": 2,
     "label": "주말 2",
     "minutes": 120,
-    "mode": "최신 5 Task 모의·약점 보강",
+    "mode": "모의고사",
     "focus": "문장을 끝까지 말하고 핵심부터 답하기",
     "theme": "업무 동기와 강점",
     "interview": [
@@ -1195,7 +1195,7 @@ const SESSIONS = [
     "slot": 2,
     "label": "주말 2",
     "minutes": 120,
-    "mode": "최신 5 Task 모의·약점 보강",
+    "mode": "모의고사",
     "focus": "이유·세부내용·비교를 붙이기",
     "theme": "요구사항 변경",
     "interview": [
@@ -1872,7 +1872,7 @@ const SESSIONS = [
     "slot": 2,
     "label": "주말 2",
     "minutes": 120,
-    "mode": "최신 5 Task 모의·약점 보강",
+    "mode": "모의고사",
     "focus": "경험과 문제해결을 순서대로 설명하기",
     "theme": "갈등 해결",
     "interview": [
@@ -2561,7 +2561,7 @@ const SESSIONS = [
     "slot": 2,
     "label": "주말 2",
     "minutes": 120,
-    "mode": "최신 5 Task 모의·약점 보강",
+    "mode": "모의고사",
     "focus": "업무·기술·의견을 확장하기",
     "theme": "안전 우려 보고",
     "interview": [
@@ -3235,7 +3235,7 @@ const SESSIONS = [
     "slot": 2,
     "label": "주말 2",
     "minutes": 120,
-    "mode": "최신 5 Task 모의·약점 보강",
+    "mode": "모의고사",
     "focus": "실전 통합과 약점 보강",
     "theme": "좋은 엔지니어",
     "interview": [
@@ -3366,177 +3366,6 @@ const SESSIONS = [
     "order": 35
   }
 ];
-
-const FIXED_AUDIO = {
-  "w1-d1-s1": "./audio/w1-d1-s1.mp3",
-  "w1-d3-s1": "./audio/w1-d3-s1.mp3",
-  "w1-d4-s2": "./audio/w1-d4-s2.mp3",
-  "w1-d5-s2": "./audio/w1-d5-s2.mp3",
-  "w1-e1-s1": "./audio/w1-e1-s1.mp3",
-  "w1-e1-s2": "./audio/w1-e1-s2.mp3",
-  "w1-e2-s1": "./audio/w1-e2-s1.mp3",
-  "w2-d1-s1": "./audio/w2-d1-s1.mp3",
-  "w2-d3-s1": "./audio/w2-d3-s1.mp3",
-  "w2-d4-s2": "./audio/w2-d4-s2.mp3",
-  "w2-e1-s1": "./audio/w2-e1-s1.mp3",
-  "w2-e1-s2": "./audio/w2-e1-s2.mp3",
-  "w2-e2-s1": "./audio/w2-e2-s1.mp3",
-  "w3-d1-s1": "./audio/w3-d1-s1.mp3",
-  "w3-d3-s1": "./audio/w3-d3-s1.mp3",
-  "w3-d4-s2": "./audio/w3-d4-s2.mp3",
-  "w3-d5-s2": "./audio/w3-d5-s2.mp3",
-  "w3-e1-s1": "./audio/w3-e1-s1.mp3",
-  "w3-e1-s2": "./audio/w3-e1-s2.mp3",
-  "w3-e2-s1": "./audio/w3-e2-s1.mp3",
-  "w4-d1-s1": "./audio/w4-d1-s1.mp3",
-  "w4-d3-s1": "./audio/w4-d3-s1.mp3",
-  "w4-d4-s2": "./audio/w4-d4-s2.mp3",
-  "w4-e1-s1": "./audio/w4-e1-s1.mp3",
-  "w4-e1-s2": "./audio/w4-e1-s2.mp3",
-  "w4-e2-s1": "./audio/w4-e2-s1.mp3",
-  "w5-d1-s1": "./audio/w5-d1-s1.mp3",
-  "w5-d3-s1": "./audio/w5-d3-s1.mp3",
-  "w5-d4-s2": "./audio/w5-d4-s2.mp3",
-  "w5-d5-s2": "./audio/w5-d5-s2.mp3",
-  "w5-e1-s1": "./audio/w5-e1-s1.mp3",
-  "w5-e1-s2": "./audio/w5-e1-s2.mp3",
-  "w5-e2-s1": "./audio/w5-e2-s1.mp3"
-};
-
-const FIXED_AUDIO_META = {
-  "w1-d1-s1": {
-    "accent": "US",
-    "bytes": 127100
-  },
-  "w1-d3-s1": {
-    "accent": "UK",
-    "bytes": 130700
-  },
-  "w1-d4-s2": {
-    "accent": "Scottish",
-    "bytes": 119324
-  },
-  "w1-d5-s2": {
-    "accent": "Northern UK",
-    "bytes": 140924
-  },
-  "w1-e1-s1": {
-    "accent": "US",
-    "bytes": 137756
-  },
-  "w1-e1-s2": {
-    "accent": "UK",
-    "bytes": 123644
-  },
-  "w1-e2-s1": {
-    "accent": "Scottish",
-    "bytes": 126812
-  },
-  "w2-d1-s1": {
-    "accent": "Northern UK",
-    "bytes": 124508
-  },
-  "w2-d3-s1": {
-    "accent": "US",
-    "bytes": 129692
-  },
-  "w2-d4-s2": {
-    "accent": "UK",
-    "bytes": 134876
-  },
-  "w2-e1-s1": {
-    "accent": "Scottish",
-    "bytes": 129260
-  },
-  "w2-e1-s2": {
-    "accent": "Northern UK",
-    "bytes": 120044
-  },
-  "w2-e2-s1": {
-    "accent": "US",
-    "bytes": 122780
-  },
-  "w3-d1-s1": {
-    "accent": "UK",
-    "bytes": 117452
-  },
-  "w3-d3-s1": {
-    "accent": "Scottish",
-    "bytes": 131276
-  },
-  "w3-d4-s2": {
-    "accent": "Northern UK",
-    "bytes": 130268
-  },
-  "w3-d5-s2": {
-    "accent": "US",
-    "bytes": 110684
-  },
-  "w3-e1-s1": {
-    "accent": "UK",
-    "bytes": 110108
-  },
-  "w3-e1-s2": {
-    "accent": "Scottish",
-    "bytes": 126380
-  },
-  "w3-e2-s1": {
-    "accent": "Northern UK",
-    "bytes": 109244
-  },
-  "w4-d1-s1": {
-    "accent": "US",
-    "bytes": 129548
-  },
-  "w4-d3-s1": {
-    "accent": "UK",
-    "bytes": 139916
-  },
-  "w4-d4-s2": {
-    "accent": "Scottish",
-    "bytes": 123644
-  },
-  "w4-e1-s1": {
-    "accent": "Northern UK",
-    "bytes": 123932
-  },
-  "w4-e1-s2": {
-    "accent": "US",
-    "bytes": 135596
-  },
-  "w4-e2-s1": {
-    "accent": "UK",
-    "bytes": 118316
-  },
-  "w5-d1-s1": {
-    "accent": "Scottish",
-    "bytes": 126956
-  },
-  "w5-d3-s1": {
-    "accent": "Northern UK",
-    "bytes": 119756
-  },
-  "w5-d4-s2": {
-    "accent": "US",
-    "bytes": 119900
-  },
-  "w5-d5-s2": {
-    "accent": "UK",
-    "bytes": 118460
-  },
-  "w5-e1-s1": {
-    "accent": "Scottish",
-    "bytes": 130988
-  },
-  "w5-e1-s2": {
-    "accent": "Northern UK",
-    "bytes": 144380
-  },
-  "w5-e2-s1": {
-    "accent": "US",
-    "bytes": 142364
-  }
-};
 
 const WARMUP_BANK = [
   "Please introduce yourself briefly.",

@@ -1,74 +1,248 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0f172a" />
-<title>SPA 45 · 5주 최신 5 Task 트레이너 · 모바일 개선 베타</titl<link rel="stylesheet" href="./css/app.css" />le>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#172554" />
+  <title>SPA 45점 목표 5주 트레이너</title>
+  <link rel="stylesheet" href="./css/app.css" />
 </head>
 <body>
-<div class="app">
-<header class="top"><div class="brand"><h1>SPA 45 · 5주 최신 5 Task 트레이너</h1><p>모바일 개선 베타 · 수동 녹음 · 누적 비교 · 회차 기반 복습</p></div><button class="iconbtn" id="themeQuick" aria-label="화면 테마">◐</button></header>
-<section class="hero" id="heroCard">
-  <div class="hero-heading">
-    <h2>최신 5 Task 흐름과 누적 학습 엔진</h2>
-    <button class="hero-toggle" id="heroToggle" type="button" aria-expanded="true">소개 접기</button>
-  </div>
-  <div class="hero-details" id="heroDetails">
-    <p>일반 질문 105개는 유지하고, 듣기·상황·시각자료는 기본 질문과 후속 질문으로 분리했습니다. 첫 답변과 재도전은 이 기기에 로컬 저장됩니다.</p>
-    <div class="hero-grid"><div class="hero-stat"><b>35회</b><span>5주 과정</span></div><div class="hero-stat"><b>105개</b><span>일반 질문 유지</span></div><div class="hero-stat"><b>95개</b><span>특수자료·일부 재구성</span></div><div class="hero-stat"><b>5회</b><span>5 Task 모의</span></div></div>
-  </div>
-</section>
-<nav class="tabs"><button class="tab active" data-tab="course">5주 과정</button><button class="tab" data-tab="practice">훈련</button><button class="tab" data-tab="records">기록</button><button class="tab" data-tab="settings">설정</button></nav>
-<section class="panel active" id="panel-course"><div class="card"><div class="session-summary"><div class="summary-cell"><b id="doneSessions">0/35</b><span>완료 회차</span></div><div class="summary-cell"><b id="savedAnswers">0</b><span>저장 답변</span></div><div class="summary-cell"><b id="dueReviews">0</b><span>복습 대기</span></div><div class="summary-cell"><b id="audioCount">0</b><span>누적 녹음</span></div></div></div><div id="courseGrid"></div></section>
-<section class="panel" id="panel-practice">
-<div id="noSession" class="card empty">5주 과정에서 학습할 회차를 선택해 주세요.</div>
-<div id="practiceArea" class="hidden">
-<div class="card"><div class="session-head"><div><div class="mobile-session-progress" id="mobileSessionProgress">0 / 0</div><div class="task-type" id="sessionMeta"></div><h2 id="sessionTitle"></h2><p id="sessionDesc" style="margin:0;color:var(--muted)"></p><div class="chips" id="sessionChips"></div></div><button class="btn secondary small" id="backCourse">과정 보기</button></div><div class="progress"><div id="sessionProgress"></div></div><div class="task-nav-wrap"><button class="nav-arrow left" id="navLeft">‹</button><div class="task-nav" id="taskNav"></div><button class="nav-arrow right" id="navRight">›</button></div><div class="nav-hint">↔ 번호를 옆으로 밀거나 화살표를 눌러 이동</div></div>
-<div class="mock-banner hidden" id="mockBanner"><b>5 Task 모의 구간</b><br>Task 1 개인·일상 → Task 2 듣고 요약 → Task 3·4 근거 있는 답변 → Task 5 시각자료 순서입니다. 이 구간에서는 중간 피드백보다 끝까지 이어가는 데 집중하세요.</div>
-<div class="card" id="taskCard">
-<div class="task-type" id="taskType"></div><h2 id="taskTitle" style="margin:4px 0"></h2><p id="taskGuide" style="margin:0;color:var(--muted)"></p>
-<div id="visualArea"></div><div id="listenArea"></div><div id="scenarioArea"></div>
-<div class="question-shell"><div class="countdown hidden" id="countdown"></div><div id="questionDisplay" class="question-hidden">먼저 ‘질문 보기·듣기’를 누르세요.</div></div>
-<div class="btnrow"><button class="btn" id="revealBtn">질문 보기·듣기</button><button class="btn secondary hidden" id="replayBtn">질문 1회 다시 보기</button></div><div id="revealRule" class="listen-status"></div>
-<div class="record-box">
-<div class="take-switch"><button class="btn secondary selected" id="takeFirst">1차 답변 녹음</button><button class="btn secondary" id="takeRetry">재도전 녹음</button></div>
-<div class="record-status"><div id="recordLabel">질문이 사라진 뒤 녹음을 시작하세요.</div><b id="recordTimer">00:00</b></div>
-<div class="btnrow"><button class="btn danger" id="recordStart" disabled>● 녹음 시작</button><button class="btn secondary" id="recordStop" disabled>■ 녹음 종료</button></div>
-<div class="metrics" id="metricPanel"><div class="metric"><b id="metricDelay">-</b><span>버튼 시작 지연</span></div><div class="metric"><b id="metricOnset">-</b><span>소리 감지 시작<br>(추정)</span></div><div class="metric"><b id="metricSilence">-</b><span>낮은 음량 3초+<br>(추정)</span></div><div class="metric"><b id="metricDuration">-</b><span>답변 길이</span></div><div class="metric"><b id="metricWpm">-</b><span>받아쓰기 기준 WPM</span></div></div>
-<div id="savedTakes"></div><div id="micHelp" class="notice hidden" style="margin-top:10px"></div></div>
-<div class="field"><label for="transcript">실제 답변 받아쓰기 또는 핵심 메모 <small>(선택)</small></label><textarea id="transcript" placeholder="말한 그대로 적으세요. 멈춤은 ..., 반복과 문법 오류도 그대로 남겨 두세요."></textarea><small id="wordInfo"></small></div>
-<div class="field"><label>오늘의 수행 결과 <small>필수 · 복습 간격의 최우선 기준</small></label><div class="outcome-grid" id="outcome"><button class="outcome-btn" data-outcome="fail">실패<small>거의 답하지 못했거나 질문을 잘못 이해함</small></button><button class="outcome-btn" data-outcome="partial">부분 성공<small>답했지만 많이 막혔거나 도움을 사용함</small></button><button class="outcome-btn" data-outcome="success">성공<small>도움 없이 충분히 답함</small></button></div><div class="listen-status">체크박스와 자동 수치는 이 선택을 뒤집지 않고 다음 간격을 조금 조정하는 데만 사용됩니다.</div></div>
-<div class="field"><label>자가평가 <small>복습 판정의 참고자료</small></label><div class="checks" id="checks"></div></div>
-<div class="field"><label>답변 체감</label><div class="rating" id="rating"><button data-rate="1">1</button><button data-rate="2">2</button><button data-rate="3">3</button><button data-rate="4">4</button><button data-rate="5">5</button></div></div>
-<label class="checkitem" style="margin:10px 0"><input type="checkbox" id="retryFlag" /> 이 문제는 다시 연습할 필요가 있다</label>
-<div class="btnrow"><button class="btn secondary" id="saveTask">현재 답변 저장</button><button class="btn secondary" id="taskPromptBtn">이 답변 피드백 프롬프트</button><button class="btn good" id="nextTask">저장하고 다음 문제</button></div>
-<div id="taskPromptArea" class="hidden" style="margin-top:15px"><div class="prompt" id="taskPrompt"></div><button class="btn secondary small" id="copyTaskPrompt" style="margin-top:8px">프롬프트 복사</button></div>
-</div>
-<div class="card hidden" id="sessionEnd"><h2>회차 완료</h2><p>첫 답변과 재도전 수치, 받아쓴 답변을 묶어 종합 피드백을 받을 수 있습니다.</p><div class="btnrow"><button class="btn" id="sessionPromptBtn">회차 종합 프롬프트 만들기</button><button class="btn secondary" id="restartSession">이 회차 다시 보기</button><button class="btn good" id="completeSession">완료 표시하고 과정으로</button></div><div id="sessionPromptArea" class="hidden" style="margin-top:15px"><div class="prompt" id="sessionPrompt"></div><button class="btn secondary small" id="copySessionPrompt" style="margin-top:8px">종합 프롬프트 복사</button></div></div>
-</div></section>
-<section class="panel" id="panel-records"><div class="section-title"><div><h2>학습 기록</h2><p>텍스트와 수치, 녹음 두 버전이 이 기기에 누적됩니다.</p></div><button class="btn secondary small" id="clearFilter">전체 보기</button></div><div id="recordList"></div></section>
-<section class="panel" id="panel-settings">
-<div class="card"><h2>질문·음성 설정</h2><div class="setting-grid"><div class="field"><label for="revealSec">기본 질문 표시시간</label><input id="revealSec" type="number" min="5" max="30" step="1" /><small>짧은 질문 최소 5초. 상황문은 자동으로 최소 15초가 적용됩니다.</small></div><div class="field"><label for="ttsRate">질문 읽기 속도</label><select id="ttsRate"><option value="0.80">0.80×</option><option value="0.90">0.90×</option><option value="0.95">0.95× 기본</option><option value="1.00">1.00×</option><option value="1.10">1.10×</option></select><small id="voiceStatus">영어 음성 준비 중</small></div></div><label class="checkitem"><input type="checkbox" id="speakQuestion" /> 질문을 표시할 때 영어로 읽어주기</label><label class="checkitem" style="margin-top:8px"><input type="checkbox" id="darkMode" /> 어두운 화면 사용</label><div class="notice goodnotice" style="margin-top:10px"><b>듣기 요약 지문은 브라우저 TTS가 아닙니다.</b><br>저장소의 audio 폴더에 있는 동일한 고정 음원을 필요할 때만 불러오므로 기기마다 목소리가 바뀌지 않습니다. 질문 읽기만 기기 영어 음성을 사용합니다.</div></div>
-<div class="card"><h2>녹음 저장·백업</h2><div class="storage-row"><span><span class="status-dot"></span>이 기기에 로컬 저장</span><b id="storageStatus">확인 중</b></div><div class="storage-row"><span>저장된 녹음</span><b id="storageClipCount">0개</b></div><div class="storage-row"><span>사용 용량</span><b id="storageBytes">0 MB</b></div><p id="storageHelp" style="color:var(--muted)">브라우저 저장소 상태를 확인하고 있습니다.</p><div class="btnrow"><button class="btn secondary" id="persistStorage">저장 보존 요청</button><button class="btn secondary" id="exportData">기록 JSON 백업</button><label class="btn secondary" for="importData" style="display:inline-block">JSON 가져오기</label><input id="importData" type="file" accept="application/json" class="hidden" /></div><hr style="border:0;border-top:1px solid var(--line);margin:16px 0"><p style="color:var(--muted)">전체 ZIP에는 기록 JSON·manifest·모든 녹음이 함께 들어갑니다. 생성 직후 ZIP을 다시 열어 파일 수와 SHA-256을 검증한 뒤 다운로드합니다.</p><div class="btnrow"><button class="btn" id="exportAudio">전체 ZIP 백업·검증</button><label class="btn secondary" for="importAudio" style="display:inline-block">전체 ZIP 복원</label><input id="importAudio" type="file" accept=".zip,application/zip" class="hidden" /></div></div>
-<div class="card"><h2>콘텐츠·복습 엔진</h2><div class="notice goodnotice"><b>특수자료 95개를 사용하며 일부는 난이도를 높인 재구성 문제입니다.</b><br>복습 문제는 ‘지연 복습’으로 표시됩니다. 사용자가 필수로 선택한 실패·부분 성공·성공을 최우선 기준으로 삼고, 자동 추정치와 자가평가는 간격만 보정합니다.</div></div>
-<div class="card"><h2>마이크 사용 안내</h2><div class="notice"><b>GitHub Pages의 HTTPS 주소에서 실행하세요.</b><br>처음 녹음 시작 시 마이크 권한에서 ‘허용’을 누르세요. 오류가 나면 권한 거부·마이크 없음·다른 앱 사용 중·녹음 형식 미지원 여부를 구분해 안내합니다.</div></div>
-<div class="card danger-zone"><h2>위험 구역</h2><p>전체 초기화는 텍스트 기록과 IndexedDB 녹음을 모두 삭제합니다. 백업 후 아래 확인 절차를 완료해야 버튼이 활성화됩니다.</p><label class="checkitem"><input type="checkbox" id="resetBackupCheck" /> 전체 ZIP 또는 필요한 기록과 오디오를 백업했다</label><div class="field"><label for="resetPhrase">확인을 위해 <b>전체 초기화</b> 입력</label><input id="resetPhrase" type="text" autocomplete="off" /></div><button class="btn danger" id="resetData" disabled>모든 기록과 녹음 삭제</button></div>
-</section>
-<div class="footer-note">SPA 공식 점수를 자동 산출하지 않습니다. 자동 수치는 응답 시작·답변 길이·추정 무음·말하기 속도를 보조적으로 보여주며, 문법·논리·질문 적합성은 ChatGPT 피드백과 함께 평가합니다.</div>
-</div>
-<div class="mobile-action-bar hidden" id="mobileActionBar" aria-label="모바일 훈련 작업 바">
-  <div class="mobile-action-meta"><b id="mobileStep">0/0</b><span id="mobileTaskName">훈련</span></div>
-  <div class="mobile-action-buttons">
-    <button class="mobile-action secondary" id="mobileReveal" type="button">질문 보기</button>
-    <button class="mobile-action danger" id="mobileRecord" type="button">녹음 시작</button>
-    <button class="mobile-action good" id="mobileNext" type="button">저장·다음</button>
-  </div>
-</div>
+  <header class="fixed-header">
+    <div class="fixed-header-inner">
+      <div class="topbar">
+        <div class="brand">
+          <h1>SPA 45점 목표 5주 트레이너</h1>
+          <p>실사용 베타 · 수동 녹음 · 누적 비교 · 회차 기반 복습</p>
+        </div>
+        <button class="iconbtn" id="themeQuick" type="button" aria-label="화면 테마 전환">◐</button>
+      </div>
+      <nav class="tabs" aria-label="주요 메뉴">
+        <button class="tab active" data-tab="course" type="button">5주 과정</button>
+        <button class="tab" data-tab="practice" type="button">훈련</button>
+        <button class="tab" data-tab="records" type="button">기록</button>
+        <button class="tab" data-tab="settings" type="button">설정</button>
+      </nav>
+    </div>
+  </header>
 
-<script src="./vendor/jszip.min.js"></script>
-<script src="./data/content.js"></script>
-<script src="./js/app.js"></script>
+  <div class="app">
+    <section class="panel active" id="panel-course">
+      <div class="card summary-card">
+        <div class="session-summary">
+          <div class="summary-cell"><b id="doneSessions">0/35</b><span class="desktop-label">완료 회차</span><span class="mobile-label">완료</span></div>
+          <div class="summary-cell"><b id="savedAnswers">0</b><span class="desktop-label">저장 답변</span><span class="mobile-label">답변</span></div>
+          <div class="summary-cell"><b id="dueReviews">0</b><span class="desktop-label">복습 대기</span><span class="mobile-label">복습</span></div>
+          <div class="summary-cell"><b id="audioCount">0</b><span class="desktop-label">누적 녹음</span><span class="mobile-label">녹음</span></div>
+        </div>
+      </div>
+      <div id="courseGrid"></div>
+    </section>
 
+    <section class="panel" id="panel-practice">
+      <div id="noSession" class="card empty">5주 과정에서 학습할 회차를 선택해 주세요.</div>
+      <div id="practiceArea" class="hidden">
+        <div class="card session-overview">
+          <div class="session-head">
+            <div>
+              <div class="mobile-session-progress" id="mobileSessionProgress">0 / 0</div>
+              <div class="task-type" id="sessionMeta"></div>
+              <h2 id="sessionTitle"></h2>
+              <p id="sessionDesc" class="muted"></p>
+              <div class="chips" id="sessionChips"></div>
+            </div>
+            <button class="btn secondary small" id="backCourse" type="button">과정 보기</button>
+          </div>
+          <div class="progress"><div id="sessionProgress"></div></div>
+          <div class="task-nav-wrap">
+            <button class="nav-arrow left" id="navLeft" type="button" aria-label="이전 문제 번호">‹</button>
+            <div class="task-nav" id="taskNav"></div>
+            <button class="nav-arrow right" id="navRight" type="button" aria-label="다음 문제 번호">›</button>
+          </div>
+          <div class="nav-hint">↔ 번호를 옆으로 밀거나 화살표를 눌러 이동</div>
+        </div>
+
+        <div class="mock-banner hidden" id="mockBanner"><b>모의고사 구간</b><br />개인 질문 → 듣고 요약 → 근거 있는 답변 → 시각자료 순서로 이어집니다.</div>
+
+        <div class="card task-card" id="taskCard">
+          <div id="answerStage">
+            <div class="task-type" id="taskType"></div>
+            <h2 id="taskTitle"></h2>
+            <p id="taskGuide" class="muted"></p>
+
+            <div id="visualArea"></div>
+            <div id="listenArea"></div>
+            <div id="scenarioArea"></div>
+
+            <div class="question-shell" id="questionShell">
+              <div class="countdown hidden" id="countdown"></div>
+              <div id="questionDisplay" class="question-hidden">먼저 ‘질문 보기·듣기’를 누르세요.</div>
+            </div>
+
+            <div class="question-actions">
+              <button class="btn" id="revealBtn" type="button">질문 보기·듣기</button>
+              <button class="btn secondary hidden" id="stopQuestionSpeech" type="button">문제 읽기 중지</button>
+            </div>
+            <div id="revealRule" class="listen-status"></div>
+
+            <div class="record-box">
+              <div class="take-switch">
+                <button class="btn secondary selected" id="takeFirst" type="button">1차 답변 녹음</button>
+                <button class="btn secondary" id="takeRetry" type="button">재도전 녹음</button>
+              </div>
+              <div class="record-status">
+                <div id="recordLabel">질문이 사라진 뒤 녹음을 시작하세요.</div>
+                <b id="recordTimer">00:00</b>
+              </div>
+              <button class="btn danger record-toggle" id="recordToggle" type="button" disabled>● 녹음 시작</button>
+              <div id="savedTakes"></div>
+              <div id="micHelp" class="notice hidden"></div>
+            </div>
+
+            <div class="field transcript-field">
+              <label for="transcript">실제 답변 받아쓰기 또는 핵심 메모 <small>(선택)</small></label>
+              <textarea id="transcript" placeholder="말한 그대로 적으세요. 멈춤은 ..., 반복과 문법 오류도 그대로 남겨 두세요."></textarea>
+            </div>
+
+            <button class="btn good full" id="goEvaluation" type="button">다음 · 수행결과 평가</button>
+          </div>
+
+          <div id="evaluationStage" class="hidden">
+            <div class="task-type">수행결과 평가</div>
+            <h2 id="evaluationTitle">오늘 답변 돌아보기</h2>
+            <div class="evaluation-question" id="evaluationQuestion"></div>
+            <div class="evaluation-transcript" id="evaluationTranscript"></div>
+
+            <div class="field">
+              <label>오늘의 수행 결과 <small>필수</small></label>
+              <div class="outcome-grid" id="outcome">
+                <button class="outcome-btn" data-outcome="fail" type="button">실패<small>거의 답하지 못함</small></button>
+                <button class="outcome-btn" data-outcome="partial" type="button">부분 성공<small>많이 막히거나 도움 사용</small></button>
+                <button class="outcome-btn" data-outcome="success" type="button">성공<small>도움 없이 충분히 답함</small></button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>자가평가</label>
+              <div class="checks" id="checks"></div>
+            </div>
+
+            <div class="field">
+              <label>답변 체감</label>
+              <div class="rating" id="rating">
+                <button data-rate="1" type="button">1</button><button data-rate="2" type="button">2</button><button data-rate="3" type="button">3</button><button data-rate="4" type="button">4</button><button data-rate="5" type="button">5</button>
+              </div>
+            </div>
+
+            <label class="checkitem retry-check"><input type="checkbox" id="retryFlag" /> 이 문제는 다시 연습할 필요가 있다</label>
+
+            <div class="evaluation-actions">
+              <button class="btn secondary" id="backToAnswer" type="button">답변 화면으로</button>
+              <button class="btn secondary" id="taskPromptBtn" type="button">피드백 프롬프트</button>
+              <button class="btn good" id="nextTask" type="button">평가 저장하고 다음 문제</button>
+            </div>
+
+            <div id="taskPromptArea" class="hidden prompt-area">
+              <div class="prompt" id="taskPrompt"></div>
+              <button class="btn secondary small" id="copyTaskPrompt" type="button">프롬프트 복사</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card hidden" id="sessionEnd">
+          <h2>회차 완료</h2>
+          <p>받아쓴 답변을 모아 종합 피드백 프롬프트를 만들 수 있습니다.</p>
+          <div class="btnrow">
+            <button class="btn" id="sessionPromptBtn" type="button">회차 종합 프롬프트</button>
+            <button class="btn secondary" id="restartSession" type="button">이 회차 다시 보기</button>
+            <button class="btn good" id="completeSession" type="button">완료 표시하고 과정으로</button>
+          </div>
+          <div id="sessionPromptArea" class="hidden prompt-area">
+            <div class="prompt" id="sessionPrompt"></div>
+            <button class="btn secondary small" id="copySessionPrompt" type="button">종합 프롬프트 복사</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-records">
+      <div class="section-title">
+        <div><h2>학습 기록</h2><p>받아쓰기와 1차·재도전 녹음이 이 기기에 누적됩니다.</p></div>
+        <button class="btn secondary small" id="clearFilter" type="button">전체 보기</button>
+      </div>
+      <div id="recordList"></div>
+    </section>
+
+    <section class="panel" id="panel-settings">
+      <div class="card">
+        <h2>질문·음성 설정</h2>
+        <div class="setting-grid">
+          <div class="field">
+            <label for="revealSec">기본 질문 표시시간</label>
+            <input id="revealSec" type="number" min="5" max="30" step="1" />
+            <small>짧은 질문 최소 5초, 상황문은 자동으로 최소 15초가 적용됩니다.</small>
+          </div>
+          <div class="field">
+            <label for="ttsRate">영어 음성 속도</label>
+            <select id="ttsRate"><option value="0.80">0.80×</option><option value="0.90">0.90×</option><option value="0.95">0.95× 기본</option><option value="1.00">1.00×</option><option value="1.10">1.10×</option></select>
+          </div>
+          <div class="field voice-field">
+            <label for="questionVoice">질문 읽기 음성</label>
+            <select id="questionVoice"></select>
+            <button class="btn secondary small voice-sample" id="sampleQuestionVoice" type="button">질문 음성 샘플</button>
+          </div>
+          <div class="field voice-field">
+            <label for="passageVoice">지문 읽기 음성</label>
+            <select id="passageVoice"></select>
+            <button class="btn secondary small voice-sample" id="samplePassageVoice" type="button">지문 음성 샘플</button>
+          </div>
+        </div>
+        <div id="voiceStatus" class="listen-status">영어 음성 목록을 준비하고 있습니다.</div>
+        <label class="checkitem"><input type="checkbox" id="speakQuestion" /> 질문을 처음 표시할 때 영어로 읽어주기</label>
+        <label class="checkitem settings-check"><input type="checkbox" id="darkMode" /> 어두운 화면 사용</label>
+      </div>
+
+      <div class="card">
+        <h2>녹음 저장·백업</h2>
+        <div class="storage-row"><span><span class="status-dot"></span>이 기기에 로컬 저장</span><b id="storageStatus">확인 중</b></div>
+        <div class="storage-row"><span>저장된 녹음</span><b id="storageClipCount">0개</b></div>
+        <div class="storage-row"><span>사용 용량</span><b id="storageBytes">0 MB</b></div>
+        <p id="storageHelp" class="muted">브라우저 저장소 상태를 확인하고 있습니다.</p>
+        <div class="btnrow">
+          <button class="btn secondary" id="persistStorage" type="button">저장 보존 요청</button>
+          <button class="btn secondary" id="exportData" type="button">기록 JSON 백업</button>
+          <label class="btn secondary file-label" for="importData">JSON 가져오기</label>
+          <input id="importData" type="file" accept="application/json" class="hidden" />
+        </div>
+        <hr />
+        <div class="btnrow">
+          <button class="btn" id="exportAudio" type="button">전체 ZIP 백업·검증</button>
+          <label class="btn secondary file-label" for="importAudio">전체 ZIP 복원</label>
+          <input id="importAudio" type="file" accept=".zip,application/zip" class="hidden" />
+        </div>
+      </div>
+
+      <div class="card danger-zone">
+        <h2>위험 구역</h2>
+        <p>전체 초기화는 텍스트 기록과 녹음을 모두 삭제합니다.</p>
+        <label class="checkitem"><input type="checkbox" id="resetBackupCheck" /> 필요한 기록과 녹음을 백업했다</label>
+        <div class="field"><label for="resetPhrase">확인을 위해 <b>전체 초기화</b> 입력</label><input id="resetPhrase" type="text" autocomplete="off" /></div>
+        <button class="btn danger" id="resetData" type="button" disabled>모든 기록과 녹음 삭제</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="mobile-action-bar hidden" id="mobileActionBar" aria-label="모바일 훈련 작업 바">
+    <div class="mobile-action-meta"><b id="mobileStep">0/0</b><span id="mobileTaskName">훈련</span></div>
+    <div class="mobile-action-buttons">
+      <button class="mobile-action secondary" id="mobileReveal" type="button">질문 보기</button>
+      <button class="mobile-action danger" id="mobileRecord" type="button">녹음 시작</button>
+      <button class="mobile-action good" id="mobileNext" type="button">평가로</button>
+    </div>
+  </div>
+
+  <script src="./vendor/jszip.min.js"></script>
+  <script src="./data/content.js"></script>
+  <script src="./js/app.js"></script>
 </body>
 </html>

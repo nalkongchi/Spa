@@ -1,19 +1,16 @@
-SPA 45 모바일 개선 베타 업로드 안내
+SPA 45점 목표 5주 트레이너 · 전체 교체 패키지
 
-GitHub 저장소 최상위에 아래 항목을 폴더 구조 그대로 업로드하세요.
-- index.html
-- css/
-- js/
-- data/
-- audio/
-- vendor/
+GitHub 저장소의 기존 파일을 모두 삭제한 뒤, 이 압축파일을 풀어 나온 아래 항목을 저장소 최상위에 그대로 업로드하세요.
 
-이번 버전의 변화
-- 520px 이하 세션 목록 1열 전환
-- 모바일 최소 글자 크기 보정
-- 소개 영역 접기 상태 저장
-- 훈련 중 하단 고정 작업 바 추가
-- 현재 문제 번호를 모바일에서 상시 표시
-- CSS, 콘텐츠 데이터, 앱 로직 분리
+index.html
+css/app.css
+data/content.js
+js/app.js
+vendor/jszip.min.js
+README_UPLOAD.txt
 
-기존 학습 기록과 IndexedDB 키는 유지되므로 같은 GitHub Pages 주소에서 파일만 교체하면 기존 기록을 계속 읽습니다.
+주의
+- audio 폴더는 더 이상 사용하지 않습니다.
+- 폴더 이름과 파일 위치를 바꾸면 CSS, 학습 데이터, 기능 또는 ZIP 백업이 작동하지 않습니다.
+- GitHub Pages 주소에서 실행해야 마이크 녹음이 가능합니다.
+- 기존 GitHub Pages 주소는 저장소와 브랜치가 같으면 그대로 유지됩니다.
