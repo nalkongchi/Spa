@@ -10,7 +10,7 @@ const EXPRESSION_CARDS_KEY = 'spa45_expression_cards_v1';
 const EXPRESSION_REVIEW_KEY = 'spa45_expression_review_v1';
 
 const defaultState = {
-  contentVersion: '5.0-expression-dark-strategy',
+  contentVersion: '5.1-bottleneck-packets-balanced-order',
   settings: {
     revealSec: 10,
     ttsRate: 0.95,
@@ -27,16 +27,49 @@ const defaultState = {
   lastSession: null
 };
 
-const checksDef = [
-  ['understood', '질문을 정확히 이해했다'],
-  ['quick', '가능한 한 빨리 첫 문장을 시작했다'],
-  ['direct', '질문에 바로 답했다'],
-  ['reason', '이유를 덧붙였다'],
-  ['detail', '세부내용이나 예시를 말했다'],
-  ['complete', '문장을 끝까지 완성했다'],
-  ['pause', '긴 침묵을 최소화했다고 느꼈다'],
-  ['flow', '연결어를 사용해 흐름을 만들었다']
+const COMMON_BOTTLENECKS = [
+  ['misunderstood', '질문의 핵심을 정확히 이해하지 못했다'],
+  ['slowStart', '답변을 시작하는 데 오래 걸렸다'],
+  ['indirect', '질문에 직접 답하지 못했다'],
+  ['thinContent', '이유·예시·세부내용이 부족했다'],
+  ['wordRecall', '필요한 단어나 표현이 떠오르지 않았다'],
+  ['incomplete', '문장을 끝까지 완성하지 못했다'],
+  ['disfluent', '긴 침묵·반복·머뭇거림이 많았다']
 ];
+
+const TYPE_BOTTLENECKS = {
+  interview: [
+    ['weakPersonalLink', '내 경험이나 의견을 질문과 자연스럽게 연결하지 못했다']
+  ],
+  listening: [
+    ['missedMainIdea', '듣기 지문의 핵심 주제를 놓쳤다'],
+    ['missedKeyDetails', '중요한 세부내용이나 결론을 기억하지 못했다']
+  ],
+  situation: [
+    ['unclearFirstAction', '상황에서 가장 먼저 할 행동을 분명하게 말하지 못했다'],
+    ['missingFollowup', '행동의 이유나 후속 조치를 충분히 설명하지 못했다']
+  ],
+  photo: [
+    ['missedSceneOverview', '사진의 전체 장소나 핵심 장면을 먼저 말하지 못했다'],
+    ['unsupportedInference', '사진에서 확인하기 어려운 내용을 단정적으로 추측했다']
+  ],
+  product: [
+    ['missedProductFeatures', '제품의 핵심 특징을 충분히 설명하지 못했다'],
+    ['missingBenefitConcern', '제품의 장점이나 가능한 우려 사항을 연결하지 못했다']
+  ],
+  visual: [
+    ['missedMainData', '자료의 가장 중요한 특징이나 수치를 먼저 말하지 못했다'],
+    ['wrongComparison', '수치·순위·비교 관계를 정확하게 설명하지 못했다']
+  ]
+};
+
+const DIFFICULTY_LABELS = {
+  1: '매우 쉬움',
+  2: '쉬움',
+  3: '보통',
+  4: '어려움',
+  5: '매우 어려움'
+};
 
 const EXPRESSION_CATEGORIES = ['의견 말하기','이유 설명','장점 설명','예시 들기','비교하기','문제 설명','문제 해결','해결책 제안','경험 이야기','사진 묘사','그래프 비교','추측하기','결론 내리기','요약','가정 상황','자기소개','추천과 설득','조언하기','습관 설명','시간 벌기','기타'];
 
@@ -62,8 +95,11 @@ let expressionReview = loadLocalJSON(EXPRESSION_REVIEW_KEY, {});
 let db = null;
 let currentSession = null;
 let currentTasks = [];
+let currentCoreTasks = [];
+let currentBoosterTasks = [];
+let boosterMode = false;
 let currentTaskIndex = 0;
-let currentRating = 0;
+let currentDifficulty = 0;
 let currentOutcome = '';
 let questionSeen = false;
 let replayUsed = false;
@@ -259,7 +295,7 @@ function buildSourceCatalog() {
   const catalog = {};
   for (const session of SESSIONS) {
     session.interview.forEach((question, index) => {
-      const source = `${session.id}-i${index + 1}`;
+      const source = session.interviewIds?.[index] || `${session.id}-i${index + 1}`;
       catalog[source] = {
         id: source,
         source,
@@ -306,7 +342,7 @@ function strategyConfigs(session) {
 }
 
 function strategyTask(session, config, index) {
-  const id = `${session.id}-x${index + 1}`;
+  const id = config.id || `${session.id}-x${index + 1}`;
   if (config.type === 'visual-extra') {
     const specialIndex = session.specials.findIndex(item => item.title === config.attachToSpecial);
     const special = session.specials[specialIndex];
@@ -352,9 +388,11 @@ function strategyTasks(session) {
 }
 
 function interviewTasks(session, officialTask = null, phase = 'practice') {
-  return session.interview.map((question, index) => ({
-    id: `${session.id}-i${index + 1}`,
-    source: `${session.id}-i${index + 1}`,
+  return session.interview.map((question, index) => {
+    const id = session.interviewIds?.[index] || `${session.id}-i${index + 1}`;
+    return ({
+    id,
+    source: id,
     type: 'interview',
     title: index === 0 ? '기본 질문' : `꼬리 질문 ${index}`,
     question,
@@ -362,7 +400,8 @@ function interviewTasks(session, officialTask = null, phase = 'practice') {
     officialTask,
     phase,
     guide: index === 0 ? '핵심 답변 뒤에 이유나 세부내용을 붙이세요.' : '앞선 답변과 연결해 구체적으로 답하세요.'
-  }));
+  });
+  });
 }
 
 function expandSpecial(session, special, specialIndex, officialTask = null, phase = 'practice') {
@@ -408,7 +447,7 @@ function sessionSpecialTasks(session) {
   return output;
 }
 
-function buildMockTasks(session) {
+function buildMockTaskSets(session) {
   const seed = (session.week - 1) * 3;
   const warmups = [0, 1].map(index => ({
     id: `${session.id}-task1-q${index + 1}`,
@@ -443,13 +482,34 @@ function buildMockTasks(session) {
       if (!used.has(item.id)) booster.push({ ...item, title: `약점 보강 · ${item.title}` });
     });
   });
-  return [...warmups, ...listening, ...task3, ...task4, ...task5, ...booster];
+  return { core: [...warmups, ...listening, ...task3, ...task4, ...task5], booster };
+}
+
+function buildPracticeTasks(session) {
+  const interviews = interviewTasks(session);
+  const strategies = strategyTasks(session).filter(task => !task.visualGroupId);
+  const at = placement => strategies.filter(task => (task.placement || 'after-interviews') === placement);
+  return [
+    ...at('opening'),
+    ...interviews.slice(0, 1),
+    ...at('after-interview-1'),
+    ...interviews.slice(1, 2),
+    ...at('after-interview-2'),
+    ...interviews.slice(2),
+    ...at('after-interviews'),
+    ...sessionSpecialTasks(session),
+    ...at('closing'),
+    ...at('after-special')
+  ];
+}
+
+function buildTaskSets(session) {
+  if (session.mock5) return buildMockTaskSets(session);
+  return { core: buildPracticeTasks(session), booster: [] };
 }
 
 function buildTasks(session) {
-  if (session.mock5) return buildMockTasks(session);
-  const strategies = strategyTasks(session).filter(task => !task.visualGroupId);
-  return [...interviewTasks(session), ...strategies, ...sessionSpecialTasks(session)];
+  return buildTaskSets(session).core;
 }
 
 function displayMode(session) {
@@ -523,26 +583,47 @@ async function updateStats() {
   }
 }
 
+function sessionTaskUniverse() {
+  const map = new Map();
+  [...currentCoreTasks, ...currentBoosterTasks].forEach(task => map.set(task.id, task));
+  return [...map.values()];
+}
+
+function updateSessionChips() {
+  if (!currentSession) return;
+  const specialQuestionCount = currentSession.specials.reduce((total, special) => total + (special.questions?.length || 1), 0);
+  const strategyCount = strategyConfigs(currentSession).length;
+  if (currentSession.mock5) {
+    $('sessionChips').innerHTML = boosterMode
+      ? `<span class="chip">선택 약점 보강</span><span class="chip">${currentTasks.length}문항</span>`
+      : `<span class="chip">모의고사</span><span class="chip">실전 ${currentCoreTasks.length}문항</span><span class="chip">선택 보강 ${currentBoosterTasks.length}문항</span>`;
+    return;
+  }
+  $('sessionChips').innerHTML = `<span class="chip">${esc(displayMode(currentSession))}</span><span class="chip">일반 질문 3개</span><span class="chip">전략 강화 ${strategyCount}문제</span><span class="chip">특수 질문 ${specialQuestionCount}개</span>`;
+}
+
 async function openSession(id) {
   if (mediaRecorder?.state === 'recording') return alert('녹음을 먼저 종료해 주세요.');
   stopAllSpeech();
   currentSession = SESSIONS.find(session => session.id === id);
   state.lastSession = id;
   saveState();
-  currentTasks = buildTasks(currentSession);
+  const taskSets = buildTaskSets(currentSession);
+  currentCoreTasks = taskSets.core;
+  currentBoosterTasks = taskSets.booster;
+  boosterMode = false;
+  currentTasks = currentCoreTasks;
   currentTaskIndex = 0;
   $('noSession').classList.add('hidden');
   $('practiceArea').classList.remove('hidden');
   $('sessionEnd').classList.add('hidden');
   $('taskCard').classList.remove('hidden');
+  $('sessionPromptArea').classList.add('hidden');
+  $('startBooster')?.classList.add('hidden');
   $('sessionMeta').textContent = `WEEK ${currentSession.week} · ${currentSession.label} · ${currentSession.minutes}분`;
   $('sessionTitle').textContent = currentSession.theme;
   $('sessionDesc').textContent = currentSession.focus;
-  const specialQuestionCount = currentSession.specials.reduce((total, special) => total + (special.questions?.length || 1), 0);
-  const strategyCount = strategyConfigs(currentSession).length;
-  $('sessionChips').innerHTML = currentSession.mock5
-    ? `<span class="chip">모의고사</span><span class="chip">실전 구간 + 약점 보강</span><span class="chip">총 ${currentTasks.length}문항</span>`
-    : `<span class="chip">${esc(displayMode(currentSession))}</span><span class="chip">일반 질문 3개</span><span class="chip">전략 강화 ${strategyCount}문제</span><span class="chip">특수 질문 ${specialQuestionCount}개</span>`;
+  updateSessionChips();
   $('mockBanner').classList.add('hidden');
   renderTaskNav();
   await loadTask(0);
@@ -585,8 +666,50 @@ function taskTypeName(task) {
   return task.phase === 'strategy' ? `전략 강화 · ${base}` : base;
 }
 
-function renderChecks() {
-  $('checks').innerHTML = checksDef.map(([key, label]) => `<label class="checkitem"><input type="checkbox" data-key="${key}" /> ${label}</label>`).join('');
+function bottleneckType(task) {
+  if (!task) return 'interview';
+  if (task.type === 'listening') return 'listening';
+  if (task.type === 'situation') return 'situation';
+  if (task.type === 'visual' && task.kind === 'photo') return 'photo';
+  if (task.type === 'visual' && task.kind === 'product') return 'product';
+  if (task.type === 'visual') return 'visual';
+  return 'interview';
+}
+
+function bottleneckDefinitions(task) {
+  return {
+    common: COMMON_BOTTLENECKS,
+    typeSpecific: TYPE_BOTTLENECKS[bottleneckType(task)] || []
+  };
+}
+
+function renderChecks(task = currentTasks[currentTaskIndex]) {
+  const groups = bottleneckDefinitions(task);
+  const renderGroup = (title, definitions) => definitions.length
+    ? `<div class="bottleneck-group"><div class="bottleneck-group-title">${esc(title)}</div><div class="checks-grid">${definitions.map(([key, label]) => `<label class="checkitem"><input type="checkbox" data-key="${key}" /> ${esc(label)}</label>`).join('')}</div></div>`
+    : '';
+  $('checks').innerHTML = `${renderGroup('공통 병목', groups.common)}${renderGroup('이 문제 유형에서 걸린 부분', groups.typeSpecific)}`;
+}
+
+function selectedBottleneckEntries(task, record, group = 'all') {
+  const groups = bottleneckDefinitions(task);
+  const definitions = group === 'common' ? groups.common : group === 'typeSpecific' ? groups.typeSpecific : [...groups.common, ...groups.typeSpecific];
+  return definitions.filter(([key]) => !!record?.bottlenecks?.[key]);
+}
+
+function selectedBottleneckText(task, record, group) {
+  const selected = selectedBottleneckEntries(task, record, group);
+  return selected.length ? selected.map(([, label]) => `- ${label}`).join('\n') : '- 선택한 항목 없음';
+}
+
+function legacySelfAssessmentText(record) {
+  if (!record?.checks || record?.bottlenecks) return '';
+  const legacyLabels = {
+    understood: '질문 이해', quick: '빠른 시작', direct: '직접 답변', reason: '이유',
+    detail: '세부내용·예시', complete: '문장 완성', pause: '침묵 최소화', flow: '연결어'
+  };
+  const selected = Object.entries(record.checks).filter(([, value]) => value).map(([key]) => legacyLabels[key] || key);
+  return selected.length ? `\n이전 버전 긍정형 자가평가: ${selected.join(', ')}\n위 기록은 병목 진단으로 해석하지 마세요.` : '';
 }
 
 function effectiveRevealSec(task) {
@@ -612,7 +735,7 @@ async function loadTask(index) {
   clearReveal();
   revokeClipUrls();
   currentTaskIndex = index;
-  currentRating = 0;
+  currentDifficulty = 0;
   currentOutcome = '';
   questionSeen = false;
   replayUsed = false;
@@ -647,20 +770,20 @@ async function loadTask(index) {
   renderVisual(task, sameVisualGroup);
   renderListen(task);
   renderScenario(task);
-  renderChecks();
+  renderChecks(task);
 
   const old = state.records[task.id] || {};
   $('transcript').value = old.transcript || '';
   $('retryFlag').checked = !!old.retry;
-  if (old.checks) {
-    Object.entries(old.checks).forEach(([key, checked]) => {
+  if (old.bottlenecks) {
+    Object.entries(old.bottlenecks).forEach(([key, checked]) => {
       const input = document.querySelector(`#checks input[data-key="${key}"]`);
       if (input) input.checked = checked;
     });
   }
-  currentRating = old.rating || 0;
+  currentDifficulty = old.difficulty || 0;
   currentOutcome = old.outcome || '';
-  document.querySelectorAll('#rating button').forEach(button => button.classList.toggle('selected', Number(button.dataset.rate) === currentRating));
+  document.querySelectorAll('#rating button').forEach(button => button.classList.toggle('selected', Number(button.dataset.rate) === currentDifficulty));
   document.querySelectorAll('#outcome button').forEach(button => button.classList.toggle('selected', button.dataset.outcome === currentOutcome));
   $('taskPromptArea').classList.add('hidden');
   resetExpressionCapture(task);
@@ -1231,7 +1354,7 @@ async function deleteTake(take) {
   renderStorageStats();
 }
 
-function collectChecks() {
+function collectBottlenecks() {
   return Object.fromEntries([...document.querySelectorAll('#checks input')].map(input => [input.dataset.key, input.checked]));
 }
 
@@ -1292,8 +1415,8 @@ function saveCurrent(showMessage = true) {
     question: fullQuestion(task),
     source: task.source,
     transcript: $('transcript').value.trim(),
-    checks: collectChecks(),
-    rating: currentRating,
+    bottlenecks: collectBottlenecks(),
+    difficulty: currentDifficulty,
     outcome: currentOutcome,
     retry: $('retryFlag').checked,
     replayUsed,
@@ -1352,9 +1475,27 @@ function finishSession() {
   $('sessionEnd').classList.remove('hidden');
   $('sessionProgress').style.width = '100%';
   $('sessionProgressTrack')?.setAttribute('aria-valuenow', '100');
+  const canStartBooster = !!(currentSession?.mock5 && !boosterMode && currentBoosterTasks.length);
+  $('startBooster')?.classList.toggle('hidden', !canStartBooster);
+  if ($('sessionEndTitle')) $('sessionEndTitle').textContent = boosterMode ? '약점 보강 완료' : '회차 완료';
+  if ($('sessionEndText')) $('sessionEndText').textContent = canStartBooster
+    ? '실전 구간이 끝났습니다. 회차를 완료하거나 선택 약점 보강을 이어갈 수 있습니다.'
+    : '받아쓴 답변을 모아 오늘 회차 종합 자료를 만들 수 있습니다.';
   syncMobileActionBar();
   window.scrollTo({ top: Math.max(0, $('sessionEnd').offsetTop - 20), behavior: 'smooth' });
 }
+
+$('startBooster')?.addEventListener('click', async () => {
+  if (!currentBoosterTasks.length) return;
+  boosterMode = true;
+  currentTasks = currentBoosterTasks;
+  currentTaskIndex = 0;
+  $('sessionEnd').classList.add('hidden');
+  $('taskCard').classList.remove('hidden');
+  $('sessionPromptArea').classList.add('hidden');
+  updateSessionChips();
+  await loadTask(0);
+});
 
 $('restartSession').addEventListener('click', async () => {
   $('sessionEnd').classList.add('hidden');
@@ -1372,7 +1513,7 @@ $('completeSession').addEventListener('click', () => {
 
 document.querySelectorAll('#rating button').forEach(button => {
   button.addEventListener('click', () => {
-    currentRating = Number(button.dataset.rate);
+    currentDifficulty = Number(button.dataset.rate);
     document.querySelectorAll('#rating button').forEach(item => item.classList.toggle('selected', item === button));
   });
 });
@@ -1385,9 +1526,113 @@ document.querySelectorAll('#outcome button').forEach(button => {
   });
 });
 
+function outcomeLabel(value) {
+  return { fail: '실패', partial: '부분 성공', success: '성공' }[value] || '미선택';
+}
+
+function difficultyLabel(record) {
+  if (record?.difficulty) return `${record.difficulty} / 5 · ${DIFFICULTY_LABELS[record.difficulty]}`;
+  if (record?.rating) return `이전 버전 답변 체감 ${record.rating} / 5 · 체감 난이도로 해석하지 않음`;
+  return '미선택';
+}
+
+function takeSummary(record, take) {
+  const data = record?.takes?.[take];
+  return data ? `있음 · ${fmt(data.duration)}` : '없음 · 해당 없음';
+}
+
+function absoluteAssetUrl(relativePath = '') {
+  if (!relativePath) return '';
+  const base = location.protocol === 'http:' || location.protocol === 'https:'
+    ? location.href
+    : 'https://nalkongchi.github.io/Spa/';
+  try { return new URL(relativePath, base).href; }
+  catch (_) { return relativePath; }
+}
+
+function referenceMaterialText(task) {
+  if (task.type === 'interview') return '별도의 참고자료가 없는 인터뷰 질문입니다.';
+  if (task.type === 'situation') {
+    return `상황 원문:\n${task.scenario}\n\n학습자가 첫 행동, 이유, 의사소통과 후속 조치를 상황에 맞게 설명했는지 확인하세요.`;
+  }
+  if (task.type === 'listening') {
+    return `듣기 지문 원문:\n${task.passage}\n\n이 원문은 학습자의 요약 정확도를 평가하기 위한 자료입니다. 재답변 전에 지문 전체를 모범 답안처럼 그대로 제시하지 마세요.`;
+  }
+  if (task.type === 'visual' && task.kind === 'photo') {
+    return `자료 유형: 사진\n자료 제목: ${task.visualTitle || task.title}\n이미지 주소: ${absoluteAssetUrl(task.image)}\n같은 사진 자료의 현재 질문: ${Number(task.visualQuestionIndex ?? task.questionIndex ?? 0) + 1} / ${task.visualQuestionCount || 1}\n시각자료 그룹 ID: ${task.visualGroupId || '없음'}\n\n이미지를 실제로 확인할 수 있을 때만 사진 내용과 답변을 비교하세요. 이미지에 접근할 수 없으면 영어 표현과 답변 구조만 평가하세요.`;
+  }
+  if (task.type === 'visual' && task.kind === 'product') {
+    const features = (task.features || []).map(value => `- ${value}`).join('\n') || '- 제공된 특징 없음';
+    return `자료 유형: 제품 이미지\n자료 제목: ${task.visualTitle || task.title}\n제공된 특징:\n${features}\n\n학습자가 제품의 특징, 장점과 가능한 우려 사항을 자료에 맞게 설명했는지 확인하세요.`;
+  }
+  if (task.type === 'visual' && task.kind === 'table') {
+    const headers = (task.headers || []).join(' | ');
+    const rows = (task.rows || []).map(row => `- ${row.join(' | ')}`).join('\n');
+    return `자료 유형: 표\n자료 제목: ${task.visualTitle || task.title}\n열 제목: ${headers}\n행 데이터:\n${rows}`;
+  }
+  if (task.type === 'visual') {
+    const firstName = task.series1 || '기본 계열';
+    const first = (task.labels || []).map((label, index) => `- ${label}: ${task.values?.[index] ?? '-'}${task.unit || ''}`).join('\n');
+    const second = task.values2
+      ? `\n\n${task.series2 || '두 번째 계열'}:\n${(task.labels || []).map((label, index) => `- ${label}: ${task.values2?.[index] ?? '-'}${task.unit || ''}`).join('\n')}`
+      : '';
+    return `자료 유형: ${task.kind || '시각자료'}\n자료 제목: ${task.visualTitle || task.title}\n단위: ${task.unit || '없음'}\n\n${firstName}:\n${first}${second}`;
+  }
+  return '별도의 참고자료가 없습니다.';
+}
+
+function compactReferenceText(task) {
+  if (task.type === 'situation') return `상황: ${task.scenario}`;
+  if (task.type === 'listening') return `듣기 자료: ${task.visualTitle || task.title}`;
+  if (task.type === 'visual' && task.kind === 'photo') return `사진: ${task.visualTitle || task.title} · ${absoluteAssetUrl(task.image)}`;
+  if (task.type === 'visual' && task.kind === 'table') return `표: ${(task.rows || []).map(row => row.join('/')).join('; ')}`;
+  if (task.type === 'visual' && task.kind === 'product') return `제품 특징: ${(task.features || []).join(', ')}`;
+  if (task.type === 'visual') {
+    const first = (task.labels || []).map((label, index) => `${label} ${task.values?.[index]}${task.unit || ''}`).join(', ');
+    const second = task.values2 ? ` / ${task.series2 || '계열 2'}: ${(task.labels || []).map((label, index) => `${label} ${task.values2?.[index]}${task.unit || ''}`).join(', ')}` : '';
+    return `자료 핵심: ${task.series1 ? `${task.series1}: ` : ''}${first}${second}`;
+  }
+  return '';
+}
+
+function expressionSuggestionsText(task) {
+  const suggestions = (task.expressions || []).map(item => `- ${item.text} · ${item.cue || item.category || '참고 표현'}`);
+  return suggestions.length ? suggestions.join('\n') : '- 앱에서 별도로 제공한 표현 후보 없음';
+}
+
 function taskPromptText(task, record) {
-  const checks = checksDef.map(([key, label]) => `- ${label}: ${record.checks?.[key] ? '예' : '아니오'}`).join('\n');
-  return `당신은 현대자동차 SPA 영어 말하기 시험을 준비하는 학습자의 코치입니다. 목표는 최근 약 40점에서 45점 이상으로 올리는 것입니다. 공식 점수를 단정하지 마세요.\n\n[문제 유형]\n${taskTypeName(task)}\n\n[현재 질문]\n${fullQuestion(task)}\n\n[학습자가 실제로 말한 답변]\n${record.transcript || '(받아쓰기 없음 — 실제 답변 내용을 먼저 요청하세요.)'}\n\n[학습 기록]\n- 1차 녹음: ${record.takes?.first ? '있음' : '없음'}\n- 재도전 녹음: ${record.takes?.retry ? '있음' : '없음'}\n- 질문 다시보기: ${record.replayUsed ? '사용' : '미사용'}\n- 듣기 재생: ${record.listenPlays || 0}회\n\n[자가평가]\n${checks}\n- 수행 결과: ${record.outcome || '미선택'}\n- 답변 체감: ${record.rating || '미선택'}/5\n- 다시 연습 필요: ${record.retry ? '예' : '아니오'}\n\n다음 순서로 피드백하세요.\n1. 질문에 직접 답했는지 평가\n2. 잘한 점 2가지\n3. 점수를 막는 핵심 문제 최대 3개\n4. 학습자가 말한 생각과 사실을 유지한 쉬운 개선 답변\n5. 재사용 가능한 표현 덩어리 3~5개\n6. 같은 질문에 재도전하도록 요청\n7. 재답변이 오면 1차와 비교해 가장 중요한 변화만 평가하고 자연스러운 꼬리 질문 1개 제시`;
+  const visualInfo = task.visualGroupId
+    ? `\n같은 시각자료 세트: ${Number(task.visualQuestionIndex ?? task.questionIndex ?? 0) + 1} / ${task.visualQuestionCount || 1}\n시각자료 그룹 ID: ${task.visualGroupId}`
+    : '';
+  const transcript = record.transcript || '(받아쓰기 없음 — 녹음 파일도 함께 전달되지 않았으므로 답변 내용을 평가할 수 없습니다.)';
+  const transcriptStatus = record.transcript ? '사용자가 입력한 받아쓰기 또는 핵심 메모' : '받아쓰기 없음';
+  const phaseLabel = boosterMode ? '선택 약점 보강' : currentSession.mock5 ? '실전 모의고사' : '일반 훈련';
+  return `[SPA_APP_PACKET_V1]\n\n[전달 유형]\n단일 답변 피드백\n\n[처리 지침]\n이 채팅방에 먼저 입력된 SPA 고정 운영 지침을 적용하세요.\n이 질문은 웹앱에서 이미 제시되었고 학습자가 답변까지 완료했습니다.\n질문을 다시 출제하지 말고 즉시 답변을 분석하세요.\n피드백 후 같은 질문에 한 번 재답변하도록 요청하고 기다리세요.\n새로운 문제나 별도의 꼬리 질문은 임의로 만들지 마세요.\n\n──────────────────────────────\n[회차 정보]\n──────────────────────────────\n\n주차: Week ${currentSession.week}\n회차: ${currentSession.label}\n회차 주제: ${currentSession.theme}\n회차 훈련 초점: ${currentSession.focus}\n회차 ID: ${currentSession.id}\n훈련 구간: ${phaseLabel}\n\n현재 문제: ${currentTaskIndex + 1} / ${currentTasks.length}\n문제 ID: ${task.id}\n문제 출처 ID: ${task.source || task.id}\n문제 유형: ${taskTypeName(task)}\n문제 제목: ${task.title}${visualInfo}\n\n──────────────────────────────\n[현재 질문]\n──────────────────────────────\n\n${fullQuestion(task)}\n\n──────────────────────────────\n[문제 참고자료]\n──────────────────────────────\n\n${referenceMaterialText(task)}\n\n──────────────────────────────\n[학습자가 실제로 말한 답변]\n──────────────────────────────\n\n${transcript}\n\n받아쓰기 상태: ${transcriptStatus}\n\n받아쓰기는 학습자가 실제로 말한 내용을 가능한 한 그대로 옮긴 자료 또는 핵심 메모입니다. 대소문자와 문장부호보다 발화 내용과 문장 구성을 우선해서 평가하세요.\n\n──────────────────────────────\n[녹음 기록]\n──────────────────────────────\n\n1차 녹음: ${takeSummary(record, 'first')}\n재도전 녹음: ${takeSummary(record, 'retry')}\n\n녹음 파일 자체는 이 프롬프트에 첨부되지 않았습니다. 녹음이 있다는 정보만으로 실제 발음, 억양, 말하기 속도와 침묵 시간을 들은 것처럼 평가하지 마세요.\n\n──────────────────────────────\n[수행 결과]\n──────────────────────────────\n\n전체 수행 결과: ${outcomeLabel(record.outcome)}\n체감 난이도: ${difficultyLabel(record)}\n질문 다시보기: ${record.replayUsed ? '사용' : '미사용'}\n듣기 지문 재생: ${record.listenPlays || 0}회\n기록에서 다시 확인: ${record.retry ? '예' : '아니오'}\n\n체감 난이도는 답변 품질 점수가 아닙니다. 1은 매우 쉬움, 5는 매우 어려움을 뜻합니다.\n\n──────────────────────────────\n[학습자 자가진단]\n──────────────────────────────\n\n선택한 공통 병목:\n${selectedBottleneckText(task, record, 'common')}\n\n선택한 문제 유형별 병목:\n${selectedBottleneckText(task, record, 'typeSpecific')}${legacySelfAssessmentText(record)}\n\n선택하지 않은 항목은 문제가 없었다는 뜻이 아니라, 학습자가 이번 답변에서 직접 병목으로 선택하지 않았다는 뜻입니다. 음성으로만 확인할 수 있는 내용은 학습자의 체감 기록으로만 참고하세요.\n\n──────────────────────────────\n[앱 제공 표현 후보]\n──────────────────────────────\n\n${expressionSuggestionsText(task)}\n\n위 표현은 참고 후보입니다. 질문과 학습자의 실제 답변에 맞는 경우에만 사용하고 모든 표현을 억지로 넣지 마세요.\n\n──────────────────────────────\n[이번 요청]\n──────────────────────────────\n\n고정 운영 지침의 ‘단일 답변 피드백’ 방식에 따라 다음을 수행하세요.\n\n1. 질문에 직접 답했는지와 핵심 의미 전달 여부 확인\n2. 실제로 잘한 점 1~2개\n3. A·B·C로 구분한 핵심 교정 1~3개\n4. 학습자의 생각과 사실을 유지한 최소 수정본\n5. 필요한 경우에만 짧은 확장본\n6. 표현 카드 후보 1~3개\n7. 같은 질문에 재답변하도록 요청하고 대기\n\n다음 문제는 웹앱에서 진행하므로 새로운 질문을 출제하지 마세요.`;
+}
+
+function countSelectedBottlenecks(items, group) {
+  const counts = new Map();
+  items.forEach(({ task, record }) => {
+    selectedBottleneckEntries(task, record, group).forEach(([, label]) => counts.set(label, (counts.get(label) || 0) + 1));
+  });
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return sorted.length ? sorted.map(([label, count]) => `- ${label}: ${count}회`).join('\n') : '- 선택 기록 없음';
+}
+
+function sessionPromptText() {
+  const allTasks = sessionTaskUniverse();
+  const items = allTasks.map(task => ({ task, record: state.records[task.id] })).filter(({ record }) => record && (record.transcript || record.takes?.first || record.takes?.retry || record.outcome));
+  const transcribed = items.filter(({ record }) => !!record.transcript).length;
+  const firstTakes = items.filter(({ record }) => !!record.takes?.first).length;
+  const retryTakes = items.filter(({ record }) => !!record.takes?.retry).length;
+  const recordsText = items.length ? items.map(({ task, record }, index) => {
+    const reference = compactReferenceText(task);
+    return `[답변 ${index + 1}]\n\n문제 ID: ${task.id}\n문제 유형: ${taskTypeName(task)}\n문제 제목: ${task.title}\n질문:\n${fullQuestion(task)}${reference ? `\n${reference}` : ''}\n\n학습자 답변:\n${record.transcript || '(받아쓰기 없음)'}\n\n받아쓰기 상태: ${record.transcript ? '사용자가 입력한 받아쓰기 또는 핵심 메모' : '받아쓰기 없음'}\n1차 녹음: ${takeSummary(record, 'first')}\n재도전 녹음: ${takeSummary(record, 'retry')}\n수행 결과: ${outcomeLabel(record.outcome)}\n체감 난이도: ${difficultyLabel(record)}\n질문 다시보기: ${record.replayUsed ? '사용' : '미사용'}\n듣기 지문 재생: ${record.listenPlays || 0}회\n기록에서 다시 확인: ${record.retry ? '예' : '아니오'}\n\n선택한 공통 병목:\n${selectedBottleneckText(task, record, 'common')}\n\n선택한 문제 유형별 병목:\n${selectedBottleneckText(task, record, 'typeSpecific')}${legacySelfAssessmentText(record)}\n\n──────────────────────────────`;
+  }).join('\n\n') : '저장된 답변 기록이 없습니다.';
+  const difficultySummary = items.length
+    ? items.map(({ task, record }, index) => `- 답변 ${index + 1} · ${task.title}: ${difficultyLabel(record)} · 수행 결과 ${outcomeLabel(record.outcome)}`).join('\n')
+    : '- 기록 없음';
+  return `[SPA_APP_PACKET_V1]\n\n[전달 유형]\n회차 종합 분석\n\n[처리 지침]\n이 채팅방에 먼저 입력된 SPA 고정 운영 지침을 적용하세요.\n새로운 문제를 출제하지 말고 이번 회차에 저장된 실제 답변 기록만 종합하세요.\n기록이 없는 문제를 수행한 것처럼 평가하지 마세요.\n\n──────────────────────────────\n[회차 정보]\n──────────────────────────────\n\n주차: Week ${currentSession.week}\n회차: ${currentSession.label}\n회차 주제: ${currentSession.theme}\n회차 훈련 초점: ${currentSession.focus}\n회차 ID: ${currentSession.id}\n실전·기본 문제 수: ${currentCoreTasks.length}\n선택 약점 보강 문제 수: ${currentBoosterTasks.length}\n답변 기록이 있는 문제 수: ${items.length}\n받아쓰기가 있는 문제 수: ${transcribed}\n1차 녹음이 있는 문제 수: ${firstTakes}\n재도전 녹음이 있는 문제 수: ${retryTakes}\n\n──────────────────────────────\n[문제별 답변 기록]\n──────────────────────────────\n\n${recordsText}\n\n──────────────────────────────\n[회차 병목 집계]\n──────────────────────────────\n\n공통 병목 선택 횟수:\n${countSelectedBottlenecks(items, 'common')}\n\n문제 유형별 병목 선택 횟수:\n${countSelectedBottlenecks(items, 'typeSpecific')}\n\n병목을 선택하지 않은 것은 해당 문제가 객관적으로 없었다는 의미가 아닙니다. 위 집계는 학습자가 직접 체감하고 선택한 항목만 보여줍니다.\n\n──────────────────────────────\n[체감 난이도 기록]\n──────────────────────────────\n\n${difficultySummary}\n\n체감 난이도는 답변 품질 점수가 아닙니다. 1은 매우 쉬움, 5는 매우 어려움을 뜻합니다.\n\n──────────────────────────────\n[이번 요청]\n──────────────────────────────\n\n고정 운영 지침의 ‘회차 종합 분석’ 방식에 따라 다음 형식으로 정리하세요.\n\n[오늘 잘된 점]\n실제 답변에서 확인된 강점 2~3개\n\n[답변에서 실제로 확인된 반복 문제]\n여러 받아쓰기에서 반복 확인된 문제 최대 4개\n\n[학습자가 반복적으로 체감한 병목]\n자가진단에서 반복 선택한 항목 최대 3개\n\n[영역별 진단]\n실제 답변 기록이 있는 영역만 평가\n\n[체감 난이도 패턴]\n성공했지만 어렵게 느낀 문제 또는 수행 결과와 난이도 차이가 큰 문제\n\n[저장할 표현 후보]\n재사용 가치가 높은 표현 3~5개. 각 표현에 영어 표현, 한국어 회상 단서, 학습자용 예문과 기능 분류 포함\n\n[다시 말해볼 답변]\n재연습 가치가 가장 높은 답변 1~2개와 선정 이유\n\n[다음 회차에서 확인할 것]\n반복된 문법, 단어 회수 또는 표현 문제 1~2개\n\n녹음 파일이 직접 첨부되지 않았다면 실제 발음, 억양, 말하기 속도와 침묵 시간을 평가하지 마세요.\n공식 SPA 점수나 등급을 단정하지 마세요.\n새로운 문제나 별도의 숙제를 임의로 추가하지 마세요.`;
 }
 
 $('taskPromptBtn').addEventListener('click', () => {
@@ -1400,16 +1645,7 @@ $('taskPromptBtn').addEventListener('click', () => {
 $('copyTaskPrompt').addEventListener('click', () => copyText($('taskPrompt').textContent));
 
 $('sessionPromptBtn').addEventListener('click', () => {
-  const items = currentTasks.map(task => ({ task, record: state.records[task.id] })).filter(item => item.record?.transcript || item.record?.takes?.first);
-  let text = `당신은 현대자동차 SPA 영어 말하기 시험 코치입니다. 다음은 Week ${currentSession.week} ${currentSession.label} 기록입니다. 공식 점수를 단정하지 말고 40점대 학습자의 45점 이상 목표에 맞춰 분석하세요.\n\n`;
-  if (!items.length) text += '저장된 답변이 없습니다.';
-  else {
-    items.forEach((item, index) => {
-      text += `[답변 ${index + 1} · ${taskTypeName(item.task)}]\n질문: ${fullQuestion(item.task)}\n실제 답변: ${item.record.transcript || '(받아쓰기 없음)'}\n수행 결과 ${item.record.outcome || '-'}, 체감 ${item.record.rating || '-'}/5, 다시보기 ${item.record.replayUsed ? '사용' : '미사용'}, 재연습 ${item.record.retry ? '필요' : '불필요'}\n\n`;
-    });
-  }
-  text += `전체 답변을 종합해 다음을 제공하세요.\n1. 공통 강점 2가지\n2. 반복되는 병목 최대 4개\n3. 문장 완성, 질문 직접 답하기, 이유·예시, 유창성, 듣기 요약, 시각자료 설명 평가\n4. 다음 회차에서 연습할 표현 틀 5개\n5. 가장 약한 답변 2개의 쉬운 개선안\n6. 짧은 재도전 과제 3개`;
-  $('sessionPrompt').textContent = text;
+  $('sessionPrompt').textContent = sessionPromptText();
   $('sessionPromptArea').classList.remove('hidden');
 });
 $('copySessionPrompt').addEventListener('click', () => copyText($('sessionPrompt').textContent));
@@ -1690,7 +1926,7 @@ function renderRecords() {
     root.innerHTML = '<div class="empty">아직 저장된 답변이 없습니다.</div>';
     return;
   }
-  root.innerHTML = records.map(record => `<div class="record-item"><div class="task-type">WEEK ${record.week} · ${esc(record.label)} · ${esc(record.type)}</div><h4>${esc(record.title)}</h4><p>${esc(record.question)}</p>${record.transcript ? `<div class="transcript">${esc(record.transcript)}</div>` : '<p>받아쓰기 없음</p>'}<div class="chips"><span class="chip">결과 ${record.outcome === 'success' ? '성공' : record.outcome === 'partial' ? '부분 성공' : record.outcome === 'fail' ? '실패' : '-'}</span><span class="chip">체감 ${record.rating || '-'}/5</span>${record.takes?.first ? '<span class="chip">1차 녹음</span>' : ''}${record.takes?.retry ? '<span class="chip">재도전 녹음</span>' : ''}${record.retry ? '<span class="chip" style="color:var(--danger)">기록에서 다시 확인</span>' : ''}</div><div class="btnrow" style="margin-top:9px"><button class="btn secondary small" data-open="${record.sessionId}" type="button">회차 열기</button><button class="btn danger small" data-del="${record.id}" type="button">기록 삭제</button></div></div>`).join('');
+  root.innerHTML = records.map(record => `<div class="record-item"><div class="task-type">WEEK ${record.week} · ${esc(record.label)} · ${esc(record.type)}</div><h4>${esc(record.title)}</h4><p>${esc(record.question)}</p>${record.transcript ? `<div class="transcript">${esc(record.transcript)}</div>` : '<p>받아쓰기 없음</p>'}<div class="chips"><span class="chip">결과 ${record.outcome === 'success' ? '성공' : record.outcome === 'partial' ? '부분 성공' : record.outcome === 'fail' ? '실패' : '-'}</span><span class="chip">${record.difficulty ? `난이도 ${record.difficulty}/5` : record.rating ? `이전 체감 ${record.rating}/5` : '난이도 -'}</span>${record.takes?.first ? '<span class="chip">1차 녹음</span>' : ''}${record.takes?.retry ? '<span class="chip">재도전 녹음</span>' : ''}${record.retry ? '<span class="chip" style="color:var(--danger)">기록에서 다시 확인</span>' : ''}</div><div class="btnrow" style="margin-top:9px"><button class="btn secondary small" data-open="${record.sessionId}" type="button">회차 열기</button><button class="btn danger small" data-del="${record.id}" type="button">기록 삭제</button></div></div>`).join('');
   root.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => openSession(button.dataset.open)));
   root.querySelectorAll('[data-del]').forEach(button => button.addEventListener('click', async () => {
     if (!confirm('텍스트 기록과 이 문제의 녹음을 모두 삭제할까요?')) return;
@@ -1974,7 +2210,7 @@ window.addEventListener('beforeunload', () => {
   renderCourse();
   syncSettings();
   renderRecords();
-  renderChecks();
+  renderChecks(null);
   if (typeof JSZip === 'undefined') console.warn('JSZip missing');
   await initDB();
   await updateStats();
