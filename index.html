@@ -380,6 +380,32 @@
   </div>
 
 
+  <div class="app-modal hidden" id="jsonImportModal" role="dialog" aria-modal="true" aria-labelledby="jsonImportTitle">
+    <div class="app-modal-backdrop" data-close-json-import></div>
+    <div class="app-modal-sheet json-import-sheet" role="document">
+      <div class="app-modal-head">
+        <div><div class="task-type">JSON 백업</div><h2 id="jsonImportTitle">가져올 내용을 확인하세요</h2></div>
+        <button class="iconbtn modal-close" id="closeJsonImport" type="button" aria-label="JSON 가져오기 닫기">×</button>
+      </div>
+      <p class="json-import-file" id="jsonImportFileName"></p>
+      <div class="json-import-grid" id="jsonImportSummary">
+        <div><span>백업 형식</span><b id="jsonImportFormat">-</b></div>
+        <div><span>내보낸 날짜</span><b id="jsonImportDate">-</b></div>
+        <div><span>답변 기록</span><b id="jsonImportRecords">0개</b></div>
+        <div><span>평가 완료</span><b id="jsonImportCompleted">0개</b></div>
+        <div><span>답변 초안</span><b id="jsonImportDrafts">0개</b></div>
+        <div><span>이어서 하기</span><b id="jsonImportResume">없음</b></div>
+        <div><span>설정</span><b id="jsonImportSettings">없음</b></div>
+        <div><span>제외 예정</span><b id="jsonImportExcluded">0개</b></div>
+      </div>
+      <p class="notice" id="jsonImportMode">현재 텍스트 기록과 포함된 표현 데이터를 교체합니다. 녹음은 변경하지 않습니다.</p>
+      <div class="json-import-warnings hidden" id="jsonImportWarnings"><strong>확인할 내용</strong><ul id="jsonImportWarningList"></ul></div>
+      <p class="notice errornotice hidden" id="jsonImportFatal"></p>
+      <p class="muted" id="jsonImportApplyStatus"></p>
+      <div class="app-modal-actions"><button class="btn secondary" id="cancelJsonImport" type="button">취소</button><button class="btn good" id="confirmJsonImport" type="button">가져오기</button></div>
+    </div>
+  </div>
+
   <div class="app-modal hidden" id="expressionEditModal" role="dialog" aria-modal="true" aria-labelledby="expressionEditTitle">
     <div class="app-modal-backdrop" data-close-expression-modal></div>
     <div class="app-modal-sheet" role="document">

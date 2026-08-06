@@ -8,6 +8,7 @@ const AUDIO_STORE = 'clips';
 const THEME_KEY = 'spa45-theme';
 const EXPRESSION_CARDS_KEY = 'spa45_expression_cards_v1';
 const EXPRESSION_REVIEW_KEY = 'spa45_expression_review_v1';
+const MAX_JSON_IMPORT_BYTES = 10 * 1024 * 1024;
 
 const defaultState = {
   contentVersion: '5.1-bottleneck-packets-balanced-order',
@@ -301,6 +302,7 @@ let expressionReviewIndex = 0;
 let resumeSaveTimer = null;
 let resumeDirty = false;
 let isRestoringResume = false;
+let pendingJSONImport = null;
 
 function loadState() {
   const validState = value => isPlainObject(value)
@@ -2500,6 +2502,7 @@ document.querySelector('[data-close-expression-delete]').addEventListener('click
 
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
+  if (!$('jsonImportModal').classList.contains('hidden')) closeJSONImportModal();
   if (!$('expressionEditModal').classList.contains('hidden')) closeExpressionEditModal();
   if (!$('expressionDeleteModal').classList.contains('hidden')) closeExpressionDeleteModal();
 });
@@ -2617,6 +2620,539 @@ $('passageVoice').addEventListener('change', event => { state.settings.passageVo
 $('sampleQuestionVoice').addEventListener('click', () => speakText('This is the question voice.', 'question'));
 $('samplePassageVoice').addEventListener('click', () => speakText('This is the listening passage voice.', 'passage', syncPassageControls));
 
+function importTaskCatalog() {
+  const catalog = new Map();
+  for (const session of SESSIONS) {
+    const sets = buildTaskSets(session);
+    for (const taskSet of ['core', 'booster']) {
+      sets[taskSet].forEach((task, taskIndex) => catalog.set(task.id, { task, session, taskSet, taskIndex }));
+    }
+  }
+  return catalog;
+}
+
+function inspectJSONComplexity(value, maxDepth = 10, maxNodes = 200000) {
+  const stack = [[value, 0]];
+  let nodes = 0;
+  while (stack.length) {
+    const [item, depth] = stack.pop();
+    nodes += 1;
+    if (nodes > maxNodes || depth > maxDepth) return false;
+    if (item && typeof item === 'object') Object.values(item).forEach(child => stack.push([child, depth + 1]));
+  }
+  return true;
+}
+
+function importValidationStats() {
+  return {
+    unknownTaskIds: 0,
+    invalidRecords: 0,
+    repairedFields: 0,
+    invalidCards: 0,
+    remappedCardIds: 0,
+    unknownSettings: 0,
+    invalidStateEntries: 0,
+    resumeInvalid: false,
+    topLevelUnknown: 0,
+    fileTypeWarning: false
+  };
+}
+
+function normalizeImportedTake(value, stats) {
+  if (!isPlainObject(value)) {
+    stats.repairedFields += 1;
+    return null;
+  }
+  if (!Number.isFinite(value.duration) || value.duration < 0 || typeof value.mime !== 'string' || typeof value.createdAt !== 'string') {
+    stats.repairedFields += 1;
+    return null;
+  }
+  return { duration: value.duration, mime: value.mime, createdAt: value.createdAt };
+}
+
+function normalizeImportedRecord(record, entry, stats) {
+  if (!isPlainObject(record) || (record.transcript !== undefined && typeof record.transcript !== 'string')) {
+    stats.invalidRecords += 1;
+    return null;
+  }
+  const { task, session } = entry;
+  const normalized = {
+    id: task.id,
+    sessionId: session.id,
+    week: session.week,
+    label: session.label,
+    title: task.title,
+    type: taskTypeName(task),
+    question: fullQuestion(task),
+    source: task.source,
+    transcript: record.transcript || '',
+    takes: {}
+  };
+  if (typeof record.savedAt === 'string') normalized.savedAt = record.savedAt;
+  if (record.outcome === undefined || record.outcome === null) normalized.outcome = '';
+  else if (record.outcome === '' || VALID_OUTCOMES.has(record.outcome)) normalized.outcome = record.outcome;
+  else {
+    normalized.outcome = '';
+    stats.repairedFields += 1;
+  }
+  if (Number.isInteger(record.difficulty) && record.difficulty >= 0 && record.difficulty <= 5) normalized.difficulty = record.difficulty;
+  else if (record.difficulty !== undefined) stats.repairedFields += 1;
+  if (Number.isInteger(record.rating) && record.rating >= 1 && record.rating <= 5) normalized.rating = record.rating;
+  else if (record.rating !== undefined) stats.repairedFields += 1;
+  for (const key of ['retry', 'replayUsed']) {
+    if (typeof record[key] === 'boolean') normalized[key] = record[key];
+    else if (record[key] !== undefined) stats.repairedFields += 1;
+  }
+  const maxListenPlays = task.type === 'listening' ? (task.listenMax || 2) : 0;
+  if (Number.isInteger(record.listenPlays) && record.listenPlays >= 0 && record.listenPlays <= maxListenPlays) normalized.listenPlays = record.listenPlays;
+  else if (record.listenPlays !== undefined) stats.repairedFields += 1;
+  if (record.bottlenecks !== undefined) {
+    if (isPlainObject(record.bottlenecks)) {
+      const groups = bottleneckDefinitions(task);
+      const allowed = new Set([...groups.common, ...groups.typeSpecific].map(([key]) => key));
+      normalized.bottlenecks = {};
+      Object.entries(record.bottlenecks).forEach(([key, checked]) => {
+        if (allowed.has(key) && typeof checked === 'boolean') normalized.bottlenecks[key] = checked;
+        else stats.repairedFields += 1;
+      });
+    } else stats.repairedFields += 1;
+  }
+  if (record.checks !== undefined) {
+    if (isPlainObject(record.checks)) {
+      normalized.checks = {};
+      Object.entries(record.checks).forEach(([key, checked]) => {
+        if (/^[A-Za-z][A-Za-z0-9_-]{0,50}$/.test(key) && !['constructor', 'prototype', '__proto__'].includes(key) && typeof checked === 'boolean') normalized.checks[key] = checked;
+        else stats.repairedFields += 1;
+      });
+    } else stats.repairedFields += 1;
+  }
+  if (record.takes !== undefined) {
+    if (isPlainObject(record.takes)) {
+      for (const take of ['first', 'retry']) {
+        if (record.takes[take] !== undefined) {
+          const normalizedTake = normalizeImportedTake(record.takes[take], stats);
+          if (normalizedTake) normalized.takes[take] = normalizedTake;
+        }
+      }
+      Object.keys(record.takes).filter(key => key !== 'first' && key !== 'retry').forEach(() => { stats.repairedFields += 1; });
+    } else stats.repairedFields += 1;
+  }
+  return normalized;
+}
+
+function normalizeImportedSettings(value, stats) {
+  const normalized = { ...defaultState.settings };
+  if (value === undefined) return { value: normalized, included: false };
+  if (!isPlainObject(value)) {
+    stats.repairedFields += 1;
+    return { value: normalized, included: true };
+  }
+  const allowedKeys = new Set(Object.keys(defaultState.settings));
+  stats.unknownSettings += Object.keys(value).filter(key => !allowedKeys.has(key)).length;
+  if (Number.isInteger(value.revealSec) && value.revealSec >= 5 && value.revealSec <= 30) normalized.revealSec = value.revealSec;
+  else if (value.revealSec !== undefined) stats.repairedFields += 1;
+  if ([0.8, 0.9, 0.95, 1, 1.1].includes(value.ttsRate)) normalized.ttsRate = value.ttsRate;
+  else if (value.ttsRate !== undefined) stats.repairedFields += 1;
+  for (const key of ['speakQuestion', 'darkMode']) {
+    if (typeof value[key] === 'boolean') normalized[key] = value[key];
+    else if (value[key] !== undefined) stats.repairedFields += 1;
+  }
+  for (const key of ['questionVoice', 'passageVoice']) {
+    if (typeof value[key] === 'string' && value[key].length <= 500) normalized[key] = value[key];
+    else if (value[key] !== undefined) stats.repairedFields += 1;
+  }
+  return { value: normalized, included: true };
+}
+
+function normalizeSessionFlagMap(value, validSessionIds, stats) {
+  if (value === undefined) return {};
+  if (!isPlainObject(value)) {
+    stats.invalidStateEntries += 1;
+    return {};
+  }
+  const normalized = {};
+  Object.entries(value).forEach(([key, enabled]) => {
+    if (validSessionIds.has(key) && enabled === true) normalized[key] = true;
+    else stats.invalidStateEntries += 1;
+  });
+  return normalized;
+}
+
+function normalizeSessionHistory(value, validSessionIds, stats) {
+  if (value === undefined) return {};
+  if (!isPlainObject(value)) {
+    stats.invalidStateEntries += 1;
+    return {};
+  }
+  const normalized = {};
+  Object.entries(value).forEach(([key, savedAt]) => {
+    if (validSessionIds.has(key) && typeof savedAt === 'string') normalized[key] = savedAt;
+    else stats.invalidStateEntries += 1;
+  });
+  return normalized;
+}
+
+function normalizeImportedResume(value, stats) {
+  if (value === undefined || value === null) return { value: null, present: value !== undefined, valid: value === null };
+  const validBase = isPlainObject(value)
+    && typeof value.sessionId === 'string'
+    && (value.taskSet === 'core' || value.taskSet === 'booster')
+    && Number.isInteger(value.taskIndex)
+    && typeof value.taskId === 'string'
+    && typeof value.draftTranscript === 'string'
+    && (value.recordingTarget === 'first' || value.recordingTarget === 'retry')
+    && typeof value.updatedAt === 'string';
+  if (validBase) {
+    const session = SESSIONS.find(item => item.id === value.sessionId);
+    if (session) {
+      const sets = buildTaskSets(session);
+      const tasks = sets[value.taskSet];
+      if (value.taskIndex >= 0 && value.taskIndex < tasks.length && tasks[value.taskIndex]?.id === value.taskId) {
+        return {
+          value: {
+            sessionId: value.sessionId,
+            taskSet: value.taskSet,
+            taskIndex: value.taskIndex,
+            taskId: value.taskId,
+            draftTranscript: value.draftTranscript,
+            recordingTarget: value.recordingTarget,
+            updatedAt: value.updatedAt
+          },
+          present: true,
+          valid: true
+        };
+      }
+    }
+  }
+  stats.resumeInvalid = true;
+  return { value: null, present: true, valid: false };
+}
+
+function safeImportedExpressionId(value, usedIds, index, stats) {
+  const reservedIds = new Set(['constructor', 'prototype', '__proto__']);
+  let next = typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) && !reservedIds.has(value) && !usedIds.has(value) ? value : '';
+  if (!next) {
+    stats.remappedCardIds += 1;
+    next = `expr-import-${index + 1}`;
+    let suffix = 1;
+    while (usedIds.has(next)) next = `expr-import-${index + 1}-${suffix++}`;
+  }
+  usedIds.add(next);
+  return next;
+}
+
+function normalizeExpressionReviewMeta(value, stats) {
+  if (value === undefined) return { streak: 0, nextDueAt: 0, lastResult: '', lastReviewedAt: '' };
+  if (!isPlainObject(value)) {
+    stats.repairedFields += 1;
+    return { streak: 0, nextDueAt: 0, lastResult: '', lastReviewedAt: '' };
+  }
+  const streak = Number.isInteger(value.streak) && value.streak >= 0 && value.streak <= 100 ? value.streak : 0;
+  const nextDueAt = Number.isFinite(value.nextDueAt) && value.nextDueAt >= 0 ? value.nextDueAt : 0;
+  const lastResult = ['', 'again', 'assisted', 'good', 'reset'].includes(value.lastResult) ? value.lastResult : '';
+  const lastReviewedAt = typeof value.lastReviewedAt === 'string' ? value.lastReviewedAt : '';
+  if (streak !== value.streak || nextDueAt !== value.nextDueAt || lastResult !== value.lastResult || lastReviewedAt !== value.lastReviewedAt) stats.repairedFields += 1;
+  return { streak, nextDueAt, lastResult, lastReviewedAt };
+}
+
+function normalizeImportedExpressions(cardsValue, reviewValue, taskCatalog, validSessionIds, stats) {
+  const cardsIncluded = cardsValue !== undefined;
+  const reviewIncluded = reviewValue !== undefined;
+  if (cardsIncluded && !Array.isArray(cardsValue)) return { fatal: 'expressionCards는 배열이어야 합니다.' };
+  if (reviewIncluded && !isPlainObject(reviewValue)) return { fatal: 'expressionReview는 객체여야 합니다.' };
+  if (!cardsIncluded && !reviewIncluded) return { cards: null, review: null, included: false };
+  const sourceCards = cardsIncluded ? cardsValue : expressionCards;
+  const usedIds = new Set();
+  const idMap = new Map();
+  const cards = [];
+  sourceCards.forEach((card, index) => {
+    if (!cardsIncluded) {
+      if (isPlainObject(card) && typeof card.id === 'string') {
+        cards.push(card);
+        idMap.set(card.id, card.id);
+        usedIds.add(card.id);
+      }
+      return;
+    }
+    if (!isPlainObject(card) || typeof card.expression !== 'string' || !card.expression.trim()) {
+      stats.invalidCards += 1;
+      return;
+    }
+    const id = safeImportedExpressionId(card.id, usedIds, index, stats);
+    if (typeof card.id === 'string' && !idMap.has(card.id)) idMap.set(card.id, id);
+    cards.push({
+      id,
+      expression: card.expression,
+      cue: typeof card.cue === 'string' ? card.cue : '',
+      example: typeof card.example === 'string' ? card.example : '',
+      category: EXPRESSION_CATEGORIES.includes(card.category) ? card.category : '기타',
+      sourceTaskId: typeof card.sourceTaskId === 'string' && taskCatalog.has(card.sourceTaskId) ? card.sourceTaskId : '',
+      sourceSessionId: typeof card.sourceSessionId === 'string' && validSessionIds.has(card.sourceSessionId) ? card.sourceSessionId : '',
+      sourceTitle: typeof card.sourceTitle === 'string' ? card.sourceTitle : '',
+      createdAt: typeof card.createdAt === 'string' ? card.createdAt : '',
+      updatedAt: typeof card.updatedAt === 'string' ? card.updatedAt : ''
+    });
+  });
+  const sourceReview = reviewIncluded ? reviewValue : {};
+  const review = Object.create(null);
+  if (reviewIncluded) {
+    cards.forEach(card => {
+      const originalId = [...idMap.entries()].find(([, nextId]) => nextId === card.id)?.[0] || card.id;
+      review[card.id] = normalizeExpressionReviewMeta(sourceReview[originalId], stats);
+    });
+    Object.keys(sourceReview).filter(id => !idMap.has(id) && !usedIds.has(id)).forEach(() => { stats.repairedFields += 1; });
+  }
+  return { cards: cardsIncluded ? cards : null, review: reviewIncluded ? review : null, included: true, cardsIncluded, reviewIncluded };
+}
+
+function importWarnings(stats) {
+  const warnings = [];
+  if (stats.fileTypeWarning) warnings.push('파일 확장자 또는 MIME은 일반 JSON과 다르지만 내용 검증을 기준으로 처리했습니다.');
+  if (stats.unknownTaskIds) warnings.push(`현재 앱에 없는 문제 ID ${stats.unknownTaskIds}건은 제외됩니다.`);
+  if (stats.invalidRecords) warnings.push(`구조가 잘못된 답변 기록 ${stats.invalidRecords}건은 제외됩니다.`);
+  if (stats.invalidCards) warnings.push(`구조가 잘못된 표현 카드 ${stats.invalidCards}건은 제외됩니다.`);
+  if (stats.remappedCardIds) warnings.push(`안전하지 않거나 중복된 표현 카드 ID ${stats.remappedCardIds}건은 새 내부 ID로 바뀝니다.`);
+  if (stats.resumeInvalid) warnings.push('이어서 하기 위치가 유효하지 않아 resume만 제외됩니다.');
+  if (stats.unknownSettings) warnings.push(`알 수 없는 설정 ${stats.unknownSettings}개는 무시됩니다.`);
+  if (stats.invalidStateEntries) warnings.push(`유효하지 않은 회차·기록 상태 ${stats.invalidStateEntries}건은 제외됩니다.`);
+  if (stats.repairedFields) warnings.push(`자료형이나 허용 범위가 잘못된 선택 필드 ${stats.repairedFields}건은 기본값 또는 빈 값으로 정리됩니다.`);
+  if (stats.topLevelUnknown) warnings.push(`현재 형식에서 사용하지 않는 최상위 항목 ${stats.topLevelUnknown}개는 무시됩니다.`);
+  return warnings;
+}
+
+function validateJSONBackup(imported, file) {
+  if (!isPlainObject(imported)) return { ok: false, title: 'JSON 최상위 구조 오류', message: '백업의 최상위 값은 객체여야 합니다. 다른 백업 파일을 선택해 주세요.' };
+  if (imported.format === undefined) return { ok: false, title: '백업 형식 정보 없음', message: 'format이 없는 파일은 공식 지원 대상이 아닙니다. 현재 앱에서 다시 내보낸 JSON을 사용해 주세요.' };
+  if (imported.format !== 'spa45-records-v3') return { ok: false, title: '지원하지 않는 백업 형식', message: `이 앱은 spa45-records-v3 형식만 가져올 수 있습니다.` };
+  if (!isPlainObject(imported.state)) return { ok: false, title: '필수 state 누락', message: '백업에 정상적인 state 객체가 없습니다. 다른 백업 파일을 선택해 주세요.' };
+  if (!inspectJSONComplexity(imported)) return { ok: false, title: 'JSON 구조가 너무 복잡함', message: '예상보다 지나치게 깊거나 큰 구조입니다. 현재 앱에서 다시 내보낸 백업을 사용해 주세요.' };
+  if (!isPlainObject(imported.state.records)) return { ok: false, title: '답변 기록 구조 오류', message: 'state.records는 문제 ID를 키로 사용하는 객체여야 합니다.' };
+
+  const stats = importValidationStats();
+  const extension = file.name.toLowerCase().endsWith('.json');
+  const mime = !file.type || file.type === 'application/json' || file.type === 'text/json' || file.type === 'text/plain';
+  stats.fileTypeWarning = !extension || !mime;
+  const knownTopLevel = new Set(['format', 'exportedAt', 'state', 'expressionCards', 'expressionReview', 'note']);
+  stats.topLevelUnknown = Object.keys(imported).filter(key => !knownTopLevel.has(key)).length;
+  if (imported.exportedAt !== undefined && typeof imported.exportedAt !== 'string') stats.repairedFields += 1;
+
+  const taskCatalog = importTaskCatalog();
+  const validSessionIds = new Set(SESSIONS.map(session => session.id));
+  const records = {};
+  Object.entries(imported.state.records).forEach(([taskId, record]) => {
+    const entry = taskCatalog.get(taskId);
+    if (!entry) {
+      stats.unknownTaskIds += 1;
+      return;
+    }
+    const normalized = normalizeImportedRecord(record, entry, stats);
+    if (normalized) records[taskId] = normalized;
+  });
+  const settings = normalizeImportedSettings(imported.state.settings, stats);
+  const resume = normalizeImportedResume(imported.state.resume, stats);
+  const reviewMeta = {};
+  if (imported.state.reviewMeta !== undefined) {
+    if (isPlainObject(imported.state.reviewMeta)) {
+      Object.entries(imported.state.reviewMeta).forEach(([taskId, meta]) => {
+        if (taskCatalog.has(taskId) && isPlainObject(meta)) reviewMeta[taskId] = clone(meta);
+        else stats.invalidStateEntries += 1;
+      });
+    } else stats.invalidStateEntries += 1;
+  }
+  const nextState = {
+    ...clone(defaultState),
+    contentVersion: typeof imported.state.contentVersion === 'string' ? imported.state.contentVersion : defaultState.contentVersion,
+    settings: settings.value,
+    records,
+    reviewMeta,
+    completed: normalizeSessionFlagMap(imported.state.completed, validSessionIds, stats),
+    startedSessions: normalizeSessionFlagMap(imported.state.startedSessions, validSessionIds, stats),
+    sessionHistory: normalizeSessionHistory(imported.state.sessionHistory, validSessionIds, stats),
+    lastSession: typeof imported.state.lastSession === 'string' && validSessionIds.has(imported.state.lastSession) ? imported.state.lastSession : null,
+    resume: resume.value
+  };
+  if (imported.state.lastSession !== undefined && imported.state.lastSession !== null && nextState.lastSession === null) stats.invalidStateEntries += 1;
+  const expressions = normalizeImportedExpressions(imported.expressionCards, imported.expressionReview, taskCatalog, validSessionIds, stats);
+  if (expressions.fatal) return { ok: false, title: '표현 데이터 구조 오류', message: `${expressions.fatal} 현재 앱에서 다시 내보낸 백업을 사용해 주세요.` };
+  const warnings = importWarnings(stats);
+  const excludedCount = stats.unknownTaskIds + stats.invalidRecords + stats.invalidCards + stats.repairedFields + stats.invalidStateEntries;
+  const evaluatedCount = Object.values(records).filter(record => ['fail', 'partial', 'success'].includes(record.outcome)).length;
+  const draftCount = Object.values(records).filter(record => !!record.transcript).length;
+  const exportedDate = typeof imported.exportedAt === 'string' && !Number.isNaN(new Date(imported.exportedAt).getTime())
+    ? new Date(imported.exportedAt)
+    : (file.lastModified ? new Date(file.lastModified) : null);
+  return {
+    ok: true,
+    normalized: { state: nextState, expressions },
+    preview: {
+      format: imported.format,
+      exportedDate,
+      recordCount: Object.keys(records).length,
+      evaluatedCount,
+      draftCount,
+      resumeStatus: stats.resumeInvalid ? 'invalid' : (resume.value ? 'valid' : 'none'),
+      settingsIncluded: settings.included,
+      excludedCount,
+      warningCount: warnings.length,
+      warnings,
+      expressionsIncluded: expressions.included
+    }
+  };
+}
+
+function resetJSONImportUI() {
+  pendingJSONImport = null;
+  $('importData').value = '';
+  $('jsonImportApplyStatus').textContent = '';
+}
+
+function closeJSONImportModal() {
+  setModalOpen($('jsonImportModal'), false);
+  resetJSONImportUI();
+}
+
+function renderJSONImportPreview(file, result) {
+  $('jsonImportFileName').textContent = `${file.name} · ${bytesText(file.size)}`;
+  $('jsonImportFatal').classList.toggle('hidden', result.ok);
+  $('jsonImportSummary').classList.toggle('hidden', !result.ok);
+  $('jsonImportMode').classList.toggle('hidden', !result.ok);
+  $('jsonImportWarnings').classList.toggle('hidden', !result.ok || !result.preview.warnings.length);
+  $('confirmJsonImport').disabled = !result.ok;
+  if (!result.ok) {
+    $('jsonImportFatal').textContent = `${result.title}: ${result.message}`;
+    $('jsonImportWarningList').replaceChildren();
+  } else {
+    const preview = result.preview;
+    $('jsonImportFormat').textContent = preview.format;
+    $('jsonImportDate').textContent = preview.exportedDate ? preview.exportedDate.toLocaleString('ko-KR') : '날짜 정보 없음';
+    $('jsonImportRecords').textContent = `${preview.recordCount}개`;
+    $('jsonImportCompleted').textContent = `${preview.evaluatedCount}개`;
+    $('jsonImportDrafts').textContent = `${preview.draftCount}개`;
+    $('jsonImportResume').textContent = preview.resumeStatus === 'valid' ? '유효함' : preview.resumeStatus === 'invalid' ? '제외 예정' : '없음';
+    $('jsonImportSettings').textContent = preview.settingsIncluded ? '포함됨' : '기본값 사용';
+    $('jsonImportExcluded').textContent = `${preview.excludedCount}개 · 경고 ${preview.warningCount}건`;
+    $('jsonImportMode').textContent = `현재 텍스트 기록을 교체합니다. ${preview.expressionsIncluded ? '백업에 포함된 표현 데이터도 교체합니다.' : '표현 데이터는 포함되지 않아 현재 값을 유지합니다.'} IndexedDB 녹음은 변경하지 않습니다.`;
+    const warningList = $('jsonImportWarningList');
+    warningList.replaceChildren();
+    preview.warnings.forEach(message => {
+      const item = document.createElement('li');
+      item.textContent = message;
+      warningList.appendChild(item);
+    });
+  }
+  setModalOpen($('jsonImportModal'), true);
+  requestAnimationFrame(() => (result.ok ? $('cancelJsonImport') : $('closeJsonImport')).focus());
+}
+
+async function prepareJSONImport(file) {
+  pendingJSONImport = null;
+  if (!file) return;
+  if (!file.size) return renderJSONImportPreview(file, { ok: false, title: '빈 파일', message: '내용이 없는 파일입니다. 다른 JSON 백업을 선택해 주세요.' });
+  if (file.size > MAX_JSON_IMPORT_BYTES) return renderJSONImportPreview(file, { ok: false, title: '파일이 너무 큼', message: 'JSON 백업은 최대 10MB까지 확인할 수 있습니다. 현재 앱에서 다시 내보낸 파일인지 확인해 주세요.' });
+  let text;
+  try {
+    text = await file.text();
+  } catch (_) {
+    return renderJSONImportPreview(file, { ok: false, title: '파일 읽기 실패', message: '파일을 읽을 수 없습니다. 파일 권한을 확인하거나 다른 백업을 선택해 주세요.' });
+  }
+  if (!text.trim()) return renderJSONImportPreview(file, { ok: false, title: '빈 파일', message: 'JSON 내용이 없습니다. 다른 백업을 선택해 주세요.' });
+  let imported;
+  try {
+    imported = JSON.parse(text);
+  } catch (_) {
+    return renderJSONImportPreview(file, { ok: false, title: 'JSON 문법 오류', message: 'JSON으로 해석할 수 없습니다. 파일을 다시 내보내거나 다른 백업을 선택해 주세요.' });
+  } finally {
+    text = null;
+  }
+  let result;
+  try {
+    result = validateJSONBackup(imported, file);
+  } catch (_) {
+    imported = null;
+    return renderJSONImportPreview(file, { ok: false, title: '백업 검증 실패', message: '백업 내용을 안전하게 확인하지 못했습니다. 현재 앱에서 다시 내보낸 JSON이나 다른 백업 파일을 선택해 주세요.' });
+  }
+  imported = null;
+  if (result.ok) pendingJSONImport = result.normalized;
+  renderJSONImportPreview(file, result);
+}
+
+function serializeImportEntries(bundle) {
+  const entries = [{ key: STORE_KEY, value: bundle.state }];
+  if (bundle.expressions.cards !== null) entries.push({ key: EXPRESSION_CARDS_KEY, value: bundle.expressions.cards });
+  if (bundle.expressions.review !== null) entries.push({ key: EXPRESSION_REVIEW_KEY, value: bundle.expressions.review });
+  return entries.map(entry => ({ ...entry, serialized: JSON.stringify(entry.value) }));
+}
+
+function commitJSONImport(bundle) {
+  let entries;
+  try {
+    entries = serializeImportEntries(bundle);
+  } catch (error) {
+    storageWriteIssue(STORE_KEY, error, 'serialize');
+    return false;
+  }
+  const originals = new Map();
+  try {
+    entries.forEach(entry => originals.set(entry.key, localStorage.getItem(entry.key)));
+  } catch (error) {
+    storageWriteIssue(STORE_KEY, error, 'write');
+    return false;
+  }
+  const written = [];
+  try {
+    for (const entry of entries) {
+      localStorage.setItem(entry.key, entry.serialized);
+      written.push(entry.key);
+    }
+  } catch (error) {
+    let rollbackFailed = false;
+    for (const key of written.reverse()) {
+      try {
+        const original = originals.get(key);
+        if (original === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, original);
+      } catch (_) {
+        rollbackFailed = true;
+      }
+    }
+    storageWriteIssue(STORE_KEY, error, 'write');
+    if (rollbackFailed) setStorageIssue('import-rollback', {
+      title: '가져오기 복구 확인 필요',
+      message: '저장 실패 후 기존 값을 되돌리는 과정도 완료되지 않았습니다. 현재 탭을 닫지 말고 다른 백업을 보관해 주세요.',
+      retryable: false
+    });
+    return false;
+  }
+  entries.forEach(entry => {
+    storageReadBlocks.delete(entry.key);
+    storageIssues.delete(`read:${entry.key}`);
+    storageIssues.delete(`write:${entry.key}`);
+  });
+  storageIssues.delete('import-rollback');
+  renderStorageAlert();
+  return true;
+}
+
+async function applyPendingJSONImport() {
+  if (!pendingJSONImport) return;
+  $('confirmJsonImport').disabled = true;
+  $('jsonImportApplyStatus').textContent = '검증된 백업을 저장하고 있습니다.';
+  if (!commitJSONImport(pendingJSONImport)) {
+    $('jsonImportApplyStatus').textContent = '브라우저 저장에 실패했습니다. 저장소 설정을 확인한 뒤 다시 시도하거나 취소해 주세요.';
+    $('confirmJsonImport').disabled = false;
+    return;
+  }
+  const next = pendingJSONImport;
+  state = next.state;
+  if (next.expressions.cards !== null) expressionCards = next.expressions.cards;
+  if (next.expressions.review !== null) expressionReview = next.expressions.review;
+  syncSettings();
+  renderRecords();
+  await updateStats();
+  closeJSONImportModal();
+  toast('검증된 JSON 기록을 가져왔습니다.');
+}
+
 function exportJSON() {
   const payload = {
     format: 'spa45-records-v3',
@@ -2638,36 +3174,11 @@ function downloadBlob(blob, name) {
 }
 
 $('exportData').addEventListener('click', exportJSON);
-$('importData').addEventListener('change', async event => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  try {
-    const imported = JSON.parse(await file.text());
-    if (!confirm('가져온 JSON 기록과 표현 카드로 현재 데이터를 교체할까요?')) return;
-    const importedState = imported.state || imported;
-    state = {
-      ...clone(defaultState),
-      ...importedState,
-      settings: { ...defaultState.settings, ...(importedState.settings || {}) },
-      records: importedState.records || {},
-      reviewMeta: importedState.reviewMeta || {},
-      completed: importedState.completed || {},
-      startedSessions: importedState.startedSessions || {},
-      sessionHistory: importedState.sessionHistory || {}
-    };
-    if (Array.isArray(imported.expressionCards)) expressionCards = imported.expressionCards;
-    if (imported.expressionReview && typeof imported.expressionReview === 'object') expressionReview = imported.expressionReview;
-    const expressionsSaved = saveExpressionData();
-    const stateSaved = saveState();
-    syncSettings();
-    renderRecords();
-    toast(expressionsSaved && stateSaved ? 'JSON 기록을 가져왔습니다.' : 'JSON은 화면에 반영됐지만 브라우저 저장에 실패했습니다.');
-  } catch (error) {
-    alert(`JSON 가져오기에 실패했습니다.\n${error.message}`);
-  } finally {
-    event.target.value = '';
-  }
-});
+$('importData').addEventListener('change', event => prepareJSONImport(event.target.files?.[0]));
+$('closeJsonImport').addEventListener('click', closeJSONImportModal);
+$('cancelJsonImport').addEventListener('click', closeJSONImportModal);
+$('confirmJsonImport').addEventListener('click', applyPendingJSONImport);
+document.querySelector('[data-close-json-import]').addEventListener('click', closeJSONImportModal);
 
 async function sha256Hex(data) {
   if (!crypto?.subtle) return null;
