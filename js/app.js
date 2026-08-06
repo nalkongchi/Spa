@@ -24,7 +24,8 @@ const defaultState = {
   completed: {},
   startedSessions: {},
   sessionHistory: {},
-  lastSession: null
+  lastSession: null,
+  resume: null
 };
 
 const COMMON_BOTTLENECKS = [
@@ -98,20 +99,168 @@ const esc = (value = '') => String(value).replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[char]));
 
-function loadLocalJSON(key, fallback) {
+const storageReadBlocks = new Set();
+const storageIssues = new Map();
+let storageRecoveryTimer = null;
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function storageLabel(key) {
+  if (key === STORE_KEY || key === OLD_STORE_KEY) return '텍스트 기록';
+  if (key === EXPRESSION_CARDS_KEY) return '표현 카드';
+  if (key === EXPRESSION_REVIEW_KEY) return '표현 복습';
+  if (key === THEME_KEY) return '테마 설정';
+  return '브라우저 데이터';
+}
+
+function renderStorageAlert() {
+  const root = $('storageAlert');
+  if (!root) return;
+  if (!storageIssues.size) {
+    root.classList.add('hidden');
+    return;
+  }
+  const issues = [...storageIssues.values()];
+  const issue = issues[0];
+  $('storageAlertTitle').textContent = issue.title;
+  $('storageAlertMessage').textContent = `${issue.message}${issues.length > 1 ? ` · 추가 문제 ${issues.length - 1}건` : ''}`;
+  root.classList.remove('hidden', 'is-success');
+  $('storageRetry').classList.toggle('hidden', !issues.some(item => item.retryable));
+}
+
+function setStorageIssue(id, issue) {
+  if (storageRecoveryTimer) {
+    clearTimeout(storageRecoveryTimer);
+    storageRecoveryTimer = null;
+  }
+  storageIssues.set(id, issue);
+  renderStorageAlert();
+}
+
+function showStorageRecovered() {
+  const root = $('storageAlert');
+  if (!root || storageIssues.size) return;
+  $('storageAlertTitle').textContent = '다시 저장되었습니다.';
+  $('storageAlertMessage').textContent = '브라우저 저장소가 정상으로 돌아왔습니다.';
+  $('storageRetry').classList.add('hidden');
+  root.classList.remove('hidden');
+  root.classList.add('is-success');
+  if (storageRecoveryTimer) clearTimeout(storageRecoveryTimer);
+  storageRecoveryTimer = setTimeout(() => {
+    root.classList.add('hidden');
+    root.classList.remove('is-success');
+    storageRecoveryTimer = null;
+  }, 4000);
+}
+
+function clearStorageIssue(id) {
+  const recovered = storageIssues.delete(id);
+  if (!recovered) return;
+  if (storageIssues.size) renderStorageAlert();
+  else showStorageRecovered();
+}
+
+function storageWriteIssue(key, error, phase) {
+  const name = error?.name || 'UnknownError';
+  let title = `${storageLabel(key)} 저장 실패`;
+  let message = '현재 메모리에서는 계속 사용할 수 있지만 새 내용이 보존되지 않을 수 있습니다.';
+  if (phase === 'serialize') {
+    message = '저장할 데이터를 JSON으로 변환하지 못했습니다. 현재 화면의 학습은 계속할 수 있습니다.';
+  } else if (name === 'QuotaExceededError') {
+    title = '브라우저 저장 공간 부족';
+    message = '새 기록이 저장되지 않았습니다. 공간을 확보한 뒤 다시 시도해 주세요.';
+  } else if (name === 'SecurityError' || name === 'NotAllowedError') {
+    title = '브라우저 저장소 차단';
+    message = '저장 권한이 차단되어 새 기록이 보존되지 않을 수 있습니다.';
+  }
+  setStorageIssue(`write:${key}`, { title, message, retryable: true });
+}
+
+function storageReadIssue(key, error, reason = 'read') {
+  storageReadBlocks.add(key);
+  const blocked = error?.name === 'SecurityError' || error?.name === 'NotAllowedError';
+  setStorageIssue(`read:${key}`, {
+    title: blocked ? '브라우저 저장소 읽기 차단' : `${storageLabel(key)} 읽기 실패`,
+    message: blocked
+      ? '기존 데이터를 확인할 수 없습니다. 원본 보호를 위해 이 항목의 자동 저장을 멈췄습니다.'
+      : `${reason === 'shape' ? '저장된 데이터 구조를 확인할 수 없습니다.' : '저장된 JSON이 손상되었습니다.'} 원본은 그대로 보존하며 자동 덮어쓰기를 막았습니다.`,
+    retryable: false
+  });
+}
+
+function readStorageText(key) {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : clone(fallback);
+    return raw === null ? { status: 'missing', value: null } : { status: 'ok', value: raw };
   } catch (error) {
-    console.warn(`${key} 데이터를 읽지 못했습니다.`, error);
+    storageReadIssue(key, error, 'read');
+    return { status: 'error', value: null };
+  }
+}
+
+function loadLocalJSON(key, fallback, validate) {
+  const result = readStorageText(key);
+  if (result.status !== 'ok') return clone(fallback);
+  let parsed;
+  try {
+    parsed = JSON.parse(result.value);
+  } catch (error) {
+    storageReadIssue(key, error, 'parse');
     return clone(fallback);
+  }
+  if (validate && !validate(parsed)) {
+    storageReadIssue(key, { name: 'DataError' }, 'shape');
+    return clone(fallback);
+  }
+  return parsed;
+}
+
+function safeWriteText(key, value) {
+  if (storageReadBlocks.has(key)) return false;
+  try {
+    localStorage.setItem(key, value);
+    clearStorageIssue(`write:${key}`);
+    return true;
+  } catch (error) {
+    storageWriteIssue(key, error, 'write');
+    return false;
+  }
+}
+
+function safeWriteJSON(key, value) {
+  if (storageReadBlocks.has(key)) return false;
+  let serialized;
+  try {
+    serialized = JSON.stringify(value);
+    if (serialized === undefined) throw new TypeError('JSON serialization returned undefined');
+  } catch (error) {
+    storageWriteIssue(key, error, 'serialize');
+    return false;
+  }
+  return safeWriteText(key, serialized);
+}
+
+function safeRemoveStorageKey(key) {
+  try {
+    localStorage.removeItem(key);
+    storageReadBlocks.delete(key);
+    storageIssues.delete(`read:${key}`);
+    storageIssues.delete(`write:${key}`);
+    renderStorageAlert();
+    return true;
+  } catch (error) {
+    storageWriteIssue(key, error, 'write');
+    return false;
   }
 }
 
 let state = loadState();
-let expressionCards = loadLocalJSON(EXPRESSION_CARDS_KEY, []);
-let expressionReview = loadLocalJSON(EXPRESSION_REVIEW_KEY, {});
+let expressionCards = loadLocalJSON(EXPRESSION_CARDS_KEY, [], Array.isArray);
+let expressionReview = loadLocalJSON(EXPRESSION_REVIEW_KEY, {}, isPlainObject);
 let db = null;
+let dbStatus = 'pending';
 let currentSession = null;
 let currentTasks = [];
 let currentCoreTasks = [];
@@ -135,6 +284,8 @@ let stream = null;
 let recordStartAt = 0;
 let recordInterval = null;
 let recordingTarget = 'first';
+let recordingStarting = false;
+let recordingSaving = false;
 let currentMime = '';
 let currentExt = 'webm';
 let clipUrls = { first: null, retry: null };
@@ -147,49 +298,124 @@ let openWeeks = null;
 let expressionFilter = '전체';
 let expressionReviewQueue = [];
 let expressionReviewIndex = 0;
+let resumeSaveTimer = null;
+let resumeDirty = false;
+let isRestoringResume = false;
 
 function loadState() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        ...clone(defaultState),
-        ...parsed,
-        settings: { ...defaultState.settings, ...(parsed.settings || {}) },
-        records: parsed.records || {},
-        reviewMeta: parsed.reviewMeta || {},
-        completed: parsed.completed || {},
-        startedSessions: parsed.startedSessions || {},
-        sessionHistory: parsed.sessionHistory || {}
-      };
-    }
-    const old = localStorage.getItem(OLD_STORE_KEY);
+  const validState = value => isPlainObject(value)
+    && (value.settings === undefined || isPlainObject(value.settings))
+    && (value.records === undefined || isPlainObject(value.records))
+    && (value.completed === undefined || isPlainObject(value.completed));
+  const current = loadLocalJSON(STORE_KEY, null, validState);
+  if (current) {
+    return {
+      ...clone(defaultState),
+      ...current,
+      settings: { ...defaultState.settings, ...(current.settings || {}) },
+      records: current.records || {},
+      reviewMeta: current.reviewMeta || {},
+      completed: current.completed || {},
+      startedSessions: current.startedSessions || {},
+      sessionHistory: current.sessionHistory || {}
+    };
+  }
+  if (!storageReadBlocks.has(STORE_KEY)) {
+    const old = loadLocalJSON(OLD_STORE_KEY, null, validState);
     if (old) {
-      const parsed = JSON.parse(old);
       return {
         ...clone(defaultState),
-        settings: { ...defaultState.settings, ...(parsed.settings || {}) },
-        records: parsed.records || {},
-        completed: parsed.completed || {},
-        lastSession: parsed.lastSession || null
+        settings: { ...defaultState.settings, ...(old.settings || {}) },
+        records: old.records || {},
+        completed: old.completed || {},
+        lastSession: old.lastSession || null
       };
     }
-  } catch (error) {
-    console.warn('저장 상태를 읽지 못했습니다.', error);
   }
   return clone(defaultState);
 }
 
 function saveState() {
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  const saved = safeWriteJSON(STORE_KEY, state);
   updateStats();
+  return saved;
 }
 
 function saveExpressionData() {
-  localStorage.setItem(EXPRESSION_CARDS_KEY, JSON.stringify(expressionCards));
-  localStorage.setItem(EXPRESSION_REVIEW_KEY, JSON.stringify(expressionReview));
+  const cardsSaved = safeWriteJSON(EXPRESSION_CARDS_KEY, expressionCards);
+  const reviewSaved = safeWriteJSON(EXPRESSION_REVIEW_KEY, expressionReview);
   updateStats();
+  return cardsSaved && reviewSaved;
+}
+
+async function retryStorageFailures() {
+  const writeKeys = [...storageIssues.keys()].filter(id => id.startsWith('write:')).map(id => id.slice(6));
+  for (const key of writeKeys) {
+    if (key === STORE_KEY) safeWriteJSON(key, state);
+    else if (key === EXPRESSION_CARDS_KEY) safeWriteJSON(key, expressionCards);
+    else if (key === EXPRESSION_REVIEW_KEY) safeWriteJSON(key, expressionReview);
+    else if (key === THEME_KEY) safeWriteText(key, document.documentElement.dataset.theme || 'light');
+  }
+  if (dbStatus === 'unavailable') await initDB(true);
+  if (storageIssues.size) renderStorageAlert();
+}
+
+$('storageRetry')?.addEventListener('click', retryStorageFailures);
+
+function resumeSignature(value) {
+  if (!value) return '';
+  return JSON.stringify({
+    sessionId: value.sessionId,
+    taskSet: value.taskSet,
+    taskIndex: value.taskIndex,
+    taskId: value.taskId,
+    draftTranscript: value.draftTranscript,
+    recordingTarget: value.recordingTarget
+  });
+}
+
+function currentResumeSnapshot() {
+  if (!currentSession || !currentTasks.length) return null;
+  const task = currentTasks[currentTaskIndex];
+  if (!task) return null;
+  return {
+    sessionId: currentSession.id,
+    taskSet: boosterMode ? 'booster' : 'core',
+    taskIndex: currentTaskIndex,
+    taskId: task.id,
+    draftTranscript: $('transcript')?.value ?? '',
+    recordingTarget: recordingTarget === 'retry' ? 'retry' : 'first',
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function flushResumeSave(persist = true) {
+  if (resumeSaveTimer) {
+    clearTimeout(resumeSaveTimer);
+    resumeSaveTimer = null;
+  }
+  if (isRestoringResume) return false;
+  const snapshot = currentResumeSnapshot();
+  if (!snapshot) {
+    resumeDirty = false;
+    return false;
+  }
+  if (!resumeDirty && resumeSignature(snapshot) === resumeSignature(state.resume)) return false;
+  if (resumeSignature(snapshot) === resumeSignature(state.resume)) {
+    resumeDirty = false;
+    return false;
+  }
+  state.resume = snapshot;
+  resumeDirty = false;
+  if (persist) saveState();
+  return true;
+}
+
+function scheduleResumeSave() {
+  if (isRestoringResume || !currentSession) return;
+  resumeDirty = true;
+  if (resumeSaveTimer) clearTimeout(resumeSaveTimer);
+  resumeSaveTimer = setTimeout(() => flushResumeSave(true), 700);
 }
 
 function fmt(seconds) {
@@ -211,8 +437,9 @@ function extForMime(mime = '') {
 }
 
 function preferredTheme() {
-  const saved = localStorage.getItem(THEME_KEY);
-  if (saved === 'dark' || saved === 'light') return saved;
+  const result = readStorageText(THEME_KEY);
+  if (result.status === 'ok' && (result.value === 'dark' || result.value === 'light')) return result.value;
+  if (result.status === 'ok') storageReadIssue(THEME_KEY, { name: 'DataError' }, 'shape');
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
@@ -236,7 +463,7 @@ function updateTheme(nextTheme = preferredTheme(), announce = false) {
 
 function toggleTheme() {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  localStorage.setItem(THEME_KEY, next);
+  safeWriteText(THEME_KEY, next);
   updateTheme(next, true);
 }
 
@@ -255,12 +482,24 @@ function stopAllSpeech() {
   syncPassageControls();
 }
 
-function setTab(name) {
+function audioOperationBusy() {
+  return recordingStarting || recordingSaving || mediaRecorder?.state === 'recording';
+}
+
+function blockWhileAudioBusy() {
+  if (!audioOperationBusy()) return false;
+  alert(recordingSaving ? '녹음을 저장하고 있습니다. 저장이 끝난 뒤 이동해 주세요.' : '녹음을 먼저 종료해 주세요.');
+  return true;
+}
+
+function setTab(name, skipResumeFlush = false) {
+  if (!skipResumeFlush) flushResumeSave(true);
   stopAllSpeech();
   document.querySelectorAll('.tab').forEach(button => button.classList.toggle('active', button.dataset.tab === name));
   document.querySelectorAll('.panel').forEach(panel => panel.classList.toggle('active', panel.id === `panel-${name}`));
   if (name === 'records') renderRecords();
   if (name === 'settings') renderStorageStats();
+  if (name === 'course') renderResumeCard();
 }
 
 document.querySelectorAll('.tab').forEach(button => {
@@ -268,18 +507,35 @@ document.querySelectorAll('.tab').forEach(button => {
 });
 $('backCourse').addEventListener('click', () => setTab('course'));
 $('themeQuick').addEventListener('click', toggleTheme);
+$('resumeContinue')?.addEventListener('click', continueFromResume);
 
 function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
+    let settled = false;
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(AUDIO_STORE)) {
         database.createObjectStore(AUDIO_STORE, { keyPath: 'key' });
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      if (settled) return request.result.close();
+      settled = true;
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      if (settled) return;
+      settled = true;
+      reject(request.error || new Error('IndexedDB open failed'));
+    };
+    request.onblocked = () => {
+      if (settled) return;
+      settled = true;
+      const error = new Error('IndexedDB open blocked');
+      error.name = 'BlockedError';
+      reject(error);
+    };
   });
 }
 
@@ -290,22 +546,137 @@ function idbRequest(request) {
   });
 }
 
-const dbPut = value => idbRequest(db.transaction(AUDIO_STORE, 'readwrite').objectStore(AUDIO_STORE).put(value));
-const dbGet = key => idbRequest(db.transaction(AUDIO_STORE).objectStore(AUDIO_STORE).get(key));
-const dbDelete = key => idbRequest(db.transaction(AUDIO_STORE, 'readwrite').objectStore(AUDIO_STORE).delete(key));
-const dbAll = () => idbRequest(db.transaction(AUDIO_STORE).objectStore(AUDIO_STORE).getAll());
-const dbClear = () => idbRequest(db.transaction(AUDIO_STORE, 'readwrite').objectStore(AUDIO_STORE).clear());
+function requireDB() {
+  if (dbStatus !== 'ready' || !db) {
+    const error = new Error('녹음 저장소가 준비되지 않았습니다.');
+    error.name = 'IndexedDBUnavailableError';
+    throw error;
+  }
+  return db;
+}
 
-async function initDB() {
+function idbRead(method, value) {
+  try {
+    const database = requireDB();
+    const store = database.transaction(AUDIO_STORE).objectStore(AUDIO_STORE);
+    return idbRequest(value === undefined ? store[method]() : store[method](value));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function idbWrite(method, value) {
+  return new Promise((resolve, reject) => {
+    let transaction;
+    try {
+      const database = requireDB();
+      transaction = database.transaction(AUDIO_STORE, 'readwrite');
+      const store = transaction.objectStore(AUDIO_STORE);
+      if (value === undefined) store[method]();
+      else store[method](value);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+  });
+}
+
+const dbPut = value => idbWrite('put', value);
+const dbGet = key => idbRead('get', key);
+const dbDelete = key => idbWrite('delete', key);
+const dbAll = () => idbRead('getAll');
+const dbClear = () => idbWrite('clear');
+
+function dbDeleteMany(keys) {
+  return new Promise((resolve, reject) => {
+    let transaction;
+    try {
+      const database = requireDB();
+      transaction = database.transaction(AUDIO_STORE, 'readwrite');
+      const store = transaction.objectStore(AUDIO_STORE);
+      keys.forEach(key => store.delete(key));
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+  });
+}
+
+function syncAudioAvailability() {
+  const ready = dbStatus === 'ready';
+  const exportButton = $('exportAudio');
+  const importInput = $('importAudio');
+  const importLabel = document.querySelector('label[for="importAudio"]');
+  if (exportButton) exportButton.disabled = !ready;
+  if (importInput) importInput.disabled = !ready;
+  if (importLabel) {
+    importLabel.classList.toggle('is-disabled', !ready);
+    importLabel.setAttribute('aria-disabled', ready ? 'false' : 'true');
+  }
+  if ($('recordToggle')) {
+    if (!ready || recordingStarting || recordingSaving) $('recordToggle').disabled = true;
+    else if (questionSeen && mediaRecorder?.state !== 'recording') $('recordToggle').disabled = false;
+    if (!ready && currentSession) syncRecordingTargetHint(false);
+  }
+  const lockTargets = !ready || audioOperationBusy();
+  if ($('takeFirst')) $('takeFirst').disabled = lockTargets;
+  if ($('takeRetry')) $('takeRetry').disabled = lockTargets;
+}
+
+function setDBUnavailable(message = '녹음 저장소를 열 수 없습니다.') {
+  db?.close();
+  db = null;
+  dbStatus = 'unavailable';
+  $('storageStatus').textContent = '사용 불가';
+  $('storageStatus').className = 'status-bad';
+  $('storageHelp').textContent = `${message} 텍스트 학습은 계속 사용할 수 있습니다.`;
+  setStorageIssue('db', {
+    title: '녹음 저장소 사용 불가',
+    message: '텍스트 기록은 계속 사용할 수 있지만 녹음·재생·오디오 ZIP 기능은 잠시 꺼집니다.',
+    retryable: true
+  });
+  syncAudioAvailability();
+  renderSavedTakes();
+}
+
+async function initDB(manualRetry = false) {
+  if (dbStatus === 'ready' && db) return true;
+  dbStatus = 'pending';
+  syncAudioAvailability();
+  if (manualRetry) {
+    $('storageStatus').textContent = '다시 연결 중';
+    $('storageHelp').textContent = '녹음 저장소를 다시 확인하고 있습니다.';
+  }
   try {
     db = await openDB();
+    dbStatus = 'ready';
+    db.onversionchange = () => {
+      db?.close();
+      db = null;
+      dbStatus = 'unavailable';
+      setStorageIssue('db', {
+        title: '녹음 저장소 연결 종료',
+        message: '텍스트 학습은 계속할 수 있지만 녹음 기능은 사용할 수 없습니다.',
+        retryable: true
+      });
+      syncAudioAvailability();
+      renderSavedTakes();
+    };
+    clearStorageIssue('db');
+    syncAudioAvailability();
     await renderStorageStats();
     updateStats();
+    if (currentSession && currentTasks[currentTaskIndex]) await loadTakes(currentTasks[currentTaskIndex]);
+    return true;
   } catch (error) {
-    console.error(error);
-    $('storageStatus').textContent = '사용 불가';
-    $('storageStatus').className = 'status-bad';
-    $('storageHelp').textContent = 'IndexedDB를 열 수 없습니다. 시크릿 모드가 아닌 최신 브라우저에서 다시 시도하세요.';
+    setDBUnavailable(error?.name === 'BlockedError' ? '다른 탭이 저장소 연결을 막고 있습니다.' : '녹음 저장소를 열 수 없습니다.');
+    return false;
   }
 }
 
@@ -530,6 +901,55 @@ function buildTasks(session) {
   return buildTaskSets(session).core;
 }
 
+function resolveResumeTarget(value = state.resume) {
+  if (!value || typeof value !== 'object') return null;
+  if (value.taskSet !== 'core' && value.taskSet !== 'booster') return null;
+  if (!Number.isInteger(value.taskIndex) || typeof value.taskId !== 'string') return null;
+  const session = SESSIONS.find(item => item.id === value.sessionId);
+  if (!session) return null;
+  const taskSets = buildTaskSets(session);
+  const tasks = value.taskSet === 'booster' ? taskSets.booster : taskSets.core;
+  if (value.taskIndex < 0 || value.taskIndex >= tasks.length) return null;
+  if (tasks[value.taskIndex]?.id !== value.taskId) return null;
+  return { session, taskSets, tasks, taskIndex: value.taskIndex, resume: value };
+}
+
+function renderResumeCard() {
+  const card = $('resumeCard');
+  if (!card) return;
+  const value = state.resume;
+  if (!value || typeof value !== 'object') {
+    card.classList.add('hidden');
+    return;
+  }
+  const target = resolveResumeTarget(value);
+  const session = target?.session || SESSIONS.find(item => item.id === value.sessionId);
+  const taskNumber = Number.isInteger(value.taskIndex) && value.taskIndex >= 0 ? value.taskIndex + 1 : '-';
+  const savedAt = value.updatedAt && !Number.isNaN(new Date(value.updatedAt).getTime())
+    ? new Date(value.updatedAt).toLocaleString('ko-KR')
+    : '시간 정보 없음';
+  $('resumeSessionName').textContent = session ? `${session.label} · ${session.theme}` : '이전 학습 위치';
+  $('resumeTaskMeta').textContent = `${value.taskSet === 'booster' ? '약점 보강 · ' : ''}${taskNumber}번 문제 · 마지막 저장 ${savedAt}`;
+  $('resumeDraftStatus').textContent = typeof value.draftTranscript === 'string' && value.draftTranscript.length
+    ? '입력 중인 답변 초안이 있습니다.'
+    : '저장된 답변 초안이 없습니다.';
+  card.classList.remove('hidden');
+}
+
+async function continueFromResume() {
+  const target = resolveResumeTarget();
+  if (!target) {
+    toast('저장된 이어서 하기 위치를 찾을 수 없습니다. 과정에서 회차를 다시 선택해 주세요.');
+    return;
+  }
+  isRestoringResume = true;
+  try {
+    await openSession(target.session.id, target);
+  } finally {
+    isRestoringResume = false;
+  }
+}
+
 function displayMode(session) {
   return session.mock5 ? '모의고사' : session.mode;
 }
@@ -596,8 +1016,9 @@ async function updateStats() {
   $('savedAnswers').textContent = records.length;
   $('dueReviews').textContent = expressionCards.length;
   renderCourse();
-  if (db) {
-    try { $('audioCount').textContent = (await dbAll()).length; } catch (_) {}
+  renderResumeCard();
+  if (dbStatus === 'ready') {
+    try { $('audioCount').textContent = (await dbAll()).length; } catch (_) { setDBUnavailable('녹음 저장소 상태를 확인할 수 없습니다.'); }
   }
 }
 
@@ -620,18 +1041,19 @@ function updateSessionChips() {
   $('sessionChips').innerHTML = `<span class="chip">${esc(displayMode(currentSession))}</span><span class="chip">일반 질문 3개</span><span class="chip">전략 강화 ${strategyCount}문제</span><span class="chip">특수 질문 ${specialQuestionCount}개</span>`;
 }
 
-async function openSession(id) {
-  if (mediaRecorder?.state === 'recording') return alert('녹음을 먼저 종료해 주세요.');
+async function openSession(id, resumeTarget = null) {
+  if (blockWhileAudioBusy()) return false;
   stopAllSpeech();
   currentSession = SESSIONS.find(session => session.id === id);
+  if (!currentSession) return false;
   state.lastSession = id;
   saveState();
-  const taskSets = buildTaskSets(currentSession);
+  const taskSets = resumeTarget?.taskSets || buildTaskSets(currentSession);
   currentCoreTasks = taskSets.core;
   currentBoosterTasks = taskSets.booster;
-  boosterMode = false;
-  currentTasks = currentCoreTasks;
-  currentTaskIndex = 0;
+  boosterMode = resumeTarget?.resume?.taskSet === 'booster';
+  currentTasks = boosterMode ? currentBoosterTasks : currentCoreTasks;
+  currentTaskIndex = resumeTarget?.taskIndex || 0;
   $('noSession').classList.add('hidden');
   $('practiceArea').classList.remove('hidden');
   $('sessionEnd').classList.add('hidden');
@@ -644,8 +1066,14 @@ async function openSession(id) {
   updateSessionChips();
   $('mockBanner').classList.add('hidden');
   renderTaskNav();
-  await loadTask(0);
+  await loadTask(currentTaskIndex);
+  if (resumeTarget) {
+    const value = resumeTarget.resume;
+    $('transcript').value = typeof value.draftTranscript === 'string' ? value.draftTranscript : $('transcript').value;
+    setTake(value.recordingTarget === 'retry' ? 'retry' : 'first');
+  }
   setTab('practice');
+  return true;
 }
 
 function updateSessionProgressUI() {
@@ -681,7 +1109,8 @@ function renderTaskNav() {
     button.setAttribute('aria-label', `${index + 1}번 문제 · ${task.title}`);
     if (index === currentTaskIndex) button.setAttribute('aria-current', 'step');
     button.addEventListener('click', async () => {
-      if (mediaRecorder?.state === 'recording') return alert('녹음을 먼저 종료해 주세요.');
+      if (blockWhileAudioBusy()) return;
+      flushResumeSave(false);
       saveBeforeNavigate();
       await loadTask(index);
     });
@@ -689,7 +1118,13 @@ function renderTaskNav() {
   });
   updateSessionProgressUI();
   requestAnimationFrame(() => {
-    nav.querySelector('.active')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    const active = nav.querySelector('.active');
+    if (active) {
+      const navRect = nav.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const targetLeft = nav.scrollLeft + activeRect.left - navRect.left - ((nav.clientWidth - activeRect.width) / 2);
+      nav.scrollTo({ left: Math.max(0, targetLeft), behavior: 'smooth' });
+    }
     requestAnimationFrame(syncTaskNavArrows);
   });
 }
@@ -770,6 +1205,18 @@ function fullQuestion(task) {
   return task.type === 'situation' ? `Situation: ${task.scenario}\n\n${task.question}` : task.question;
 }
 
+function scrollTaskBelowHeader(target) {
+  const practiceArea = $('practiceArea');
+  practiceArea.style.paddingBottom = '';
+  const headerHeight = document.querySelector('.fixed-header')?.getBoundingClientRect().height || 0;
+  const targetTop = window.scrollY + target.getBoundingClientRect().top;
+  const desiredTop = Math.max(0, targetTop - headerHeight - 12);
+  const maxScrollTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const missingScrollSpace = Math.max(0, desiredTop - maxScrollTop);
+  if (missingScrollSpace) practiceArea.style.paddingBottom = `${Math.ceil(missingScrollSpace)}px`;
+  window.scrollTo({ top: desiredTop, behavior: 'smooth' });
+}
+
 async function loadTask(index) {
   const previousTask = currentTasks[currentTaskIndex] || null;
   const nextTask = currentTasks[index];
@@ -833,10 +1280,11 @@ async function loadTask(index) {
   resetExpressionCapture(task);
   setTake('first');
   await loadTakes(task);
-  $('revealRule').textContent = `현재 문제 표시시간: ${effectiveRevealSec(task)}초 · 다시보기 동일 · 1회 가능`;
+  $('revealRule').textContent = `현재 문제 표시시간: ${effectiveRevealSec(task)}초 · 다시보기 5초 · 1회 가능`;
   renderTaskNav();
-  const scrollTarget = sameVisualGroup ? $('questionShell') : $('practiceArea');
-  window.scrollTo({ top: Math.max(0, scrollTarget.offsetTop - 12), behavior: 'smooth' });
+  const scrollTarget = sameVisualGroup ? $('questionShell') : $('taskTitle');
+  scrollTaskBelowHeader(scrollTarget);
+  flushResumeSave(true);
 }
 
 function renderScenario(task) {
@@ -1156,15 +1604,17 @@ function clearReveal() {
 }
 
 function revealQuestion(isReplay = false) {
+  if (recordingStarting || recordingSaving || mediaRecorder?.state === 'recording') return;
   const task = currentTasks[currentTaskIndex];
   const shown = fullQuestion(task);
-  const seconds = effectiveRevealSec(task);
+  const seconds = isReplay ? 5 : effectiveRevealSec(task);
   questionSeen = true;
   if (isReplay) replayUsed = true;
   $('questionDisplay').className = 'question-text';
   $('questionDisplay').textContent = shown;
   $('revealBtn').disabled = true;
-  if (mediaRecorder?.state !== 'recording') $('recordToggle').disabled = true;
+  $('recordToggle').disabled = dbStatus !== 'ready';
+  syncRecordingTargetHint(true);
   if (!isReplay && state.settings.speakQuestion) speakText(shown.replace(/\n/g, ' '), 'question');
   let left = seconds;
   $('countdown').textContent = `${left}초`;
@@ -1184,9 +1634,10 @@ function hideQuestion() {
   $('questionDisplay').textContent = '질문이 가려졌습니다. 답을 미리 쓰지 말고 녹음을 시작하세요.';
   $('countdown').classList.add('hidden');
   questionHiddenAt = performance.now();
-  if (mediaRecorder?.state !== 'recording') $('recordToggle').disabled = false;
-  syncRecordingTargetHint(true);
-  if (!replayUsed) {
+  const recordingBusy = recordingStarting || recordingSaving || mediaRecorder?.state === 'recording' || dbStatus !== 'ready';
+  $('recordToggle').disabled = recordingBusy;
+  if (!recordingBusy) syncRecordingTargetHint(true);
+  if (!replayUsed && !recordingBusy) {
     $('revealBtn').textContent = '질문 1회 다시 보기';
     $('revealBtn').disabled = false;
     $('revealBtn').classList.remove('hidden');
@@ -1231,11 +1682,31 @@ function syncRecordButton() {
 }
 
 async function startRecording() {
+  if (recordingStarting || recordingSaving || mediaRecorder?.state === 'recording') return;
   const task = currentTasks[currentTaskIndex];
+  if (dbStatus !== 'ready') {
+    setStorageIssue('db', {
+      title: '녹음 저장소 사용 불가',
+      message: '텍스트 학습은 계속할 수 있지만 녹음은 저장소 연결 후 사용할 수 있습니다.',
+      retryable: true
+    });
+    return;
+  }
   if (!window.isSecureContext && location.protocol !== 'localhost:') return showMicError({ name: 'SecurityError' });
   if (!navigator.mediaDevices?.getUserMedia) return showMicError({ name: 'UnsupportedError' });
   if (!window.MediaRecorder) return showMicError({ name: 'MediaRecorderUnsupported' });
   if (clipCache[recordingTarget] && !confirm(`${recordingTarget === 'first' ? '1차 답변' : '재도전'} 녹음을 덮어쓸까요?`)) return;
+  const taskAtStart = task;
+  const takeAtStart = recordingTarget;
+  const sessionIdAtStart = currentSession.id;
+  recordingStarting = true;
+  $('takeFirst').disabled = true;
+  $('takeRetry').disabled = true;
+  if (revealInterval || $('questionDisplay').classList.contains('question-text')) hideQuestion();
+  else {
+    $('revealBtn').disabled = true;
+    $('revealBtn').classList.add('hidden');
+  }
   stopAllSpeech();
   try {
     $('recordLabel').textContent = '마이크 준비 중…';
@@ -1244,58 +1715,91 @@ async function startRecording() {
     currentMime = chooseMime();
     currentExt = extForMime(currentMime);
     mediaRecorder = new MediaRecorder(stream, currentMime ? { mimeType: currentMime } : undefined);
+    const recorderAtStart = mediaRecorder;
     const chunks = [];
-    mediaRecorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
-    mediaRecorder.onerror = event => showMicError(event.error || event);
-    mediaRecorder.onstop = async () => {
+    recorderAtStart.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    recorderAtStart.onerror = event => showMicError(event.error || event);
+    recorderAtStart.onstop = async () => {
       const duration = (performance.now() - recordStartAt) / 1000;
-      const blob = new Blob(chunks, { type: mediaRecorder.mimeType || currentMime || 'audio/webm' });
+      const blob = new Blob(chunks, { type: recorderAtStart.mimeType || currentMime || 'audio/webm' });
       stopLiveResources();
       const createdAt = new Date().toISOString();
       const takeData = { duration, mime: blob.type, createdAt };
-      const key = `${task.id}:${recordingTarget}`;
-      await dbPut({
-        key,
-        taskId: task.id,
-        source: task.source,
-        sessionId: currentSession.id,
-        take: recordingTarget,
-        title: task.title,
-        blob,
-        mime: blob.type,
-        ext: extForMime(blob.type),
-        metrics: takeData,
-        createdAt
-      });
-      const record = ensureRecord(task);
-      record.takes = record.takes || {};
-      record.takes[recordingTarget] = takeData;
-      record.savedAt = createdAt;
-      markSessionStarted();
-      saveState();
-      await loadTakes(task);
-      $('recordLabel').textContent = '녹음이 기기에 저장되었습니다.';
-      $('recordToggle').disabled = false;
-      syncRecordButton();
-      if (task.type === 'listening' && $('showPassage')) $('showPassage').classList.remove('hidden');
-      renderStorageStats();
+      const key = `${taskAtStart.id}:${takeAtStart}`;
+      try {
+        await dbPut({
+          key,
+          taskId: taskAtStart.id,
+          source: taskAtStart.source,
+          sessionId: sessionIdAtStart,
+          take: takeAtStart,
+          title: taskAtStart.title,
+          blob,
+          mime: blob.type,
+          ext: extForMime(blob.type),
+          metrics: takeData,
+          createdAt
+        });
+        const record = ensureRecord(taskAtStart);
+        record.takes = record.takes || {};
+        record.takes[takeAtStart] = takeData;
+        record.savedAt = createdAt;
+        markSessionStarted(sessionIdAtStart);
+        saveState();
+        clearStorageIssue('recording');
+        if (currentTasks[currentTaskIndex]?.id === taskAtStart.id) {
+          try { await loadTakes(taskAtStart); } catch (_) {}
+        }
+        $('recordLabel').textContent = '녹음이 기기에 저장되었습니다.';
+        if (taskAtStart.type === 'listening' && $('showPassage')) $('showPassage').classList.remove('hidden');
+      } catch (error) {
+        setStorageIssue('recording', {
+          title: '녹음 저장 실패',
+          message: `새 ${takeAtStart === 'first' ? '1차' : '재도전'} 녹음은 저장되지 않았습니다. 기존 녹음은 유지됩니다. 다시 녹음해 주세요.`,
+          retryable: false
+        });
+        $('recordLabel').textContent = '녹음을 저장하지 못했습니다. 다시 녹음해 주세요.';
+        $('micHelp').className = 'notice errornotice';
+        $('micHelp').textContent = '새 녹음 저장에 실패했습니다. 기존 녹음은 그대로 유지됩니다.';
+      } finally {
+        recordingSaving = false;
+        chunks.length = 0;
+        $('recordToggle').disabled = dbStatus !== 'ready';
+        if (!replayUsed) {
+          $('revealBtn').textContent = '질문 1회 다시 보기';
+          $('revealBtn').disabled = false;
+          $('revealBtn').classList.remove('hidden');
+        }
+        syncRecordButton();
+        renderStorageStats();
+        syncAudioAvailability();
+      }
     };
-    mediaRecorder.start(250);
+    recorderAtStart.start(250);
+    recordingStarting = false;
     recordStartAt = performance.now();
     recordInterval = setInterval(() => { $('recordTimer').textContent = fmt((performance.now() - recordStartAt) / 1000); }, 250);
     $('recordLabel').innerHTML = '<span class="pulse"></span>녹음 중';
     $('recordToggle').disabled = false;
     syncRecordButton();
   } catch (error) {
+    recordingStarting = false;
     stopLiveResources();
     $('recordToggle').disabled = false;
+    if (questionSeen && !replayUsed) {
+      $('revealBtn').textContent = '질문 1회 다시 보기';
+      $('revealBtn').disabled = false;
+      $('revealBtn').classList.remove('hidden');
+    }
     syncRecordButton();
+    syncAudioAvailability();
     showMicError(error);
   }
 }
 
 function stopRecording() {
   if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+  recordingSaving = true;
   mediaRecorder.stop();
   if (recordInterval) {
     clearInterval(recordInterval);
@@ -1307,6 +1811,7 @@ function stopRecording() {
 }
 
 function toggleRecording() {
+  if (recordingStarting || recordingSaving) return;
   if (mediaRecorder?.state === 'recording') stopRecording();
   else startRecording();
 }
@@ -1329,6 +1834,7 @@ function showMicError(error) {
 $('recordToggle').addEventListener('click', toggleRecording);
 
 function setTake(which) {
+  if (audioOperationBusy() && which !== recordingTarget) return;
   recordingTarget = which;
   $('takeFirst').classList.toggle('selected', which === 'first');
   $('takeRetry').classList.toggle('selected', which === 'retry');
@@ -1337,13 +1843,20 @@ function setTake(which) {
 
 function syncRecordingTargetHint(ready = false) {
   if (mediaRecorder?.state === 'recording') return;
+  if (dbStatus !== 'ready') {
+    $('recordLabel').textContent = '녹음 저장소를 사용할 수 없습니다. 위의 저장 안내에서 다시 시도해 주세요.';
+    return;
+  }
   const target = recordingTarget === 'first' ? '1차 녹음' : '재도전 녹음';
+  const questionVisible = $('questionDisplay').classList.contains('question-text');
   $('recordLabel').textContent = ready
-    ? `저장 위치: ${target} · 녹음 시작을 누르세요.`
+    ? questionVisible
+      ? `저장 위치: ${target} · 준비되면 바로 녹음을 시작할 수 있습니다.`
+      : `저장 위치: ${target} · 녹음 시작을 누르세요.`
     : `저장 위치: ${target} · 질문 확인 후 녹음을 시작하세요.`;
 }
-$('takeFirst').addEventListener('click', () => setTake('first'));
-$('takeRetry').addEventListener('click', () => setTake('retry'));
+$('takeFirst').addEventListener('click', () => { setTake('first'); scheduleResumeSave(); });
+$('takeRetry').addEventListener('click', () => { setTake('retry'); scheduleResumeSave(); });
 
 function revokeClipUrls() {
   for (const take of ['first', 'retry']) {
@@ -1355,16 +1868,32 @@ function revokeClipUrls() {
 
 async function loadTakes(task) {
   revokeClipUrls();
-  for (const take of ['first', 'retry']) {
-    const clip = await dbGet(`${task.id}:${take}`);
-    clipCache[take] = clip || null;
-    if (clip) clipUrls[take] = URL.createObjectURL(clip.blob);
+  if (dbStatus !== 'ready') {
+    renderSavedTakes();
+    return false;
   }
-  renderSavedTakes();
+  try {
+    for (const take of ['first', 'retry']) {
+      const clip = await dbGet(`${task.id}:${take}`);
+      clipCache[take] = clip || null;
+      if (clip) clipUrls[take] = URL.createObjectURL(clip.blob);
+    }
+    renderSavedTakes();
+    return true;
+  } catch (error) {
+    revokeClipUrls();
+    setDBUnavailable('저장된 녹음을 읽을 수 없습니다.');
+    return false;
+  }
 }
 
 function renderSavedTakes() {
   const root = $('savedTakes');
+  if (!root) return;
+  if (dbStatus !== 'ready') {
+    root.innerHTML = '<div class="notice errornotice">녹음 저장소를 사용할 수 없어 재생·삭제가 비활성화되었습니다.</div>';
+    return;
+  }
   const cards = [];
   for (const take of ['first', 'retry']) {
     const clip = clipCache[take];
@@ -1385,6 +1914,7 @@ function renderSavedTakes() {
 }
 
 function downloadTake(take) {
+  if (dbStatus !== 'ready') return;
   const clip = clipCache[take];
   if (!clip) return;
   const link = document.createElement('a');
@@ -1394,14 +1924,23 @@ function downloadTake(take) {
 }
 
 async function deleteTake(take) {
+  if (dbStatus !== 'ready') return setDBUnavailable('녹음 저장소가 준비되지 않았습니다.');
   if (!confirm(`${take === 'first' ? '1차 답변' : '재도전'} 녹음을 삭제할까요?`)) return;
   const task = currentTasks[currentTaskIndex];
-  await dbDelete(`${task.id}:${take}`);
-  const record = state.records[task.id];
-  if (record?.takes) delete record.takes[take];
-  saveState();
-  await loadTakes(task);
-  renderStorageStats();
+  try {
+    await dbDelete(`${task.id}:${take}`);
+    const record = state.records[task.id];
+    if (record?.takes) delete record.takes[take];
+    saveState();
+    await loadTakes(task);
+    renderStorageStats();
+  } catch (_) {
+    setStorageIssue('recording', {
+      title: '녹음 삭제 실패',
+      message: '기존 녹음은 그대로 유지됩니다. 잠시 후 다시 시도해 주세요.',
+      retryable: false
+    });
+  }
 }
 
 function collectBottlenecks() {
@@ -1474,9 +2013,9 @@ function saveCurrent(showMessage = true) {
     savedAt: new Date().toISOString()
   });
   markSessionStarted();
-  saveState();
+  const persisted = saveState();
   renderTaskNav();
-  if (showMessage) toast('평가가 저장되었습니다.');
+  if (showMessage) toast(persisted ? '평가가 저장되었습니다.' : '평가는 화면에 반영됐지만 브라우저에 저장되지 않았습니다.');
   return true;
 }
 
@@ -1486,10 +2025,11 @@ function saveBeforeNavigate() {
 }
 
 function showEvaluation() {
-  if (mediaRecorder?.state === 'recording') return alert('녹음을 먼저 종료해 주세요.');
+  if (blockWhileAudioBusy()) return;
   const hasAudio = !!clipCache.first || !!clipCache.retry;
   const hasTranscript = !!$('transcript').value.trim();
   if (!hasAudio && !hasTranscript && !confirm('녹음과 받아쓰기가 모두 비어 있습니다. 평가 화면으로 넘어갈까요?')) return;
+  flushResumeSave(false);
   saveDraft();
   stage = 'evaluation';
   $('selfDiagnosisDetails').open = false;
@@ -1512,6 +2052,7 @@ function showAnswer() {
 
 $('goEvaluation').addEventListener('click', showEvaluation);
 $('backToAnswer').addEventListener('click', showAnswer);
+$('transcript').addEventListener('input', scheduleResumeSave);
 $('nextTask').addEventListener('click', async () => {
   if (!saveCurrent(true)) return;
   if (currentTaskIndex < currentTasks.length - 1) await loadTask(currentTaskIndex + 1);
@@ -1555,8 +2096,9 @@ $('completeSession').addEventListener('click', () => {
   state.completed[currentSession.id] = true;
   delete state.startedSessions[currentSession.id];
   state.sessionHistory[currentSession.id] = new Date().toISOString();
+  if (state.resume?.sessionId === currentSession.id) state.resume = null;
   saveState();
-  setTab('course');
+  setTab('course', true);
 });
 
 document.querySelectorAll('#rating button').forEach(button => {
@@ -1808,7 +2350,7 @@ function saveExpressionCardFromForm() {
     expressionReview[card.id] = { streak: 0, nextDueAt: 0, lastResult: '', lastReviewedAt: '' };
     $('expressionSaveStatus').textContent = '표현 카드에 저장했습니다.';
   }
-  saveExpressionData();
+  if (!saveExpressionData()) $('expressionSaveStatus').textContent = '화면에는 반영됐지만 브라우저에 저장되지 않았습니다.';
 }
 
 $('saveExpression')?.addEventListener('click', saveExpressionCardFromForm);
@@ -1911,10 +2453,10 @@ function saveExpressionCardEdit() {
   card.example = $('editExpressionExample').value.trim();
   card.category = EXPRESSION_CATEGORIES.includes($('editExpressionCategory').value) ? $('editExpressionCategory').value : '기타';
   card.updatedAt = new Date().toISOString();
-  saveExpressionData();
+  const persisted = saveExpressionData();
   closeExpressionEditModal();
   renderExpressionHub();
-  toast('표현 카드를 수정했습니다.');
+  toast(persisted ? '표현 카드를 수정했습니다.' : '수정 내용은 화면에만 반영됐습니다.');
 }
 
 function resetExpressionReview(cardId) {
@@ -1942,10 +2484,10 @@ function confirmExpressionCardDelete() {
   if (!cardId) return closeExpressionDeleteModal();
   expressionCards = expressionCards.filter(item => item.id !== cardId);
   delete expressionReview[cardId];
-  saveExpressionData();
+  const persisted = saveExpressionData();
   closeExpressionDeleteModal();
   renderExpressionHub();
-  toast('표현 카드를 삭제했습니다.');
+  toast(persisted ? '표현 카드를 삭제했습니다.' : '삭제 내용은 화면에만 반영됐습니다.');
 }
 
 $('closeExpressionEdit').addEventListener('click', closeExpressionEditModal);
@@ -2035,13 +2577,21 @@ function renderRecords() {
   root.innerHTML = records.map(record => `<div class="record-item"><div class="task-type">WEEK ${record.week} · ${esc(record.label)} · ${esc(record.type)}</div><h4>${esc(record.title)}</h4><p>${esc(record.question)}</p>${record.transcript ? `<div class="transcript">${esc(record.transcript)}</div>` : '<p>받아쓰기 없음</p>'}<div class="chips"><span class="chip">결과 ${record.outcome === 'success' ? '성공' : record.outcome === 'partial' ? '부분 성공' : record.outcome === 'fail' ? '실패' : '-'}</span><span class="chip">${record.difficulty ? `난이도 ${record.difficulty}/5` : record.rating ? `이전 체감 ${record.rating}/5` : '난이도 -'}</span>${record.takes?.first ? '<span class="chip">1차 녹음</span>' : ''}${record.takes?.retry ? '<span class="chip">재도전 녹음</span>' : ''}${record.retry ? '<span class="chip" style="color:var(--danger)">기록에서 다시 확인</span>' : ''}</div><div class="btnrow" style="margin-top:9px"><button class="btn secondary small" data-open="${record.sessionId}" type="button">회차 열기</button><button class="btn danger small" data-del="${record.id}" type="button">기록 삭제</button></div></div>`).join('');
   root.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => openSession(button.dataset.open)));
   root.querySelectorAll('[data-del]').forEach(button => button.addEventListener('click', async () => {
+    if (dbStatus !== 'ready') return alert('녹음 저장소를 사용할 수 없어 녹음이 연결된 기록을 안전하게 삭제할 수 없습니다.');
     if (!confirm('텍스트 기록과 이 문제의 녹음을 모두 삭제할까요?')) return;
-    delete state.records[button.dataset.del];
-    await dbDelete(`${button.dataset.del}:first`);
-    await dbDelete(`${button.dataset.del}:retry`);
-    saveState();
-    renderRecords();
-    renderStorageStats();
+    try {
+      await dbDeleteMany([`${button.dataset.del}:first`, `${button.dataset.del}:retry`]);
+      delete state.records[button.dataset.del];
+      saveState();
+      renderRecords();
+      renderStorageStats();
+    } catch (_) {
+      setStorageIssue('recording', {
+        title: '기록 삭제 실패',
+        message: '기존 텍스트와 녹음 기록은 유지됩니다. 잠시 후 다시 시도해 주세요.',
+        retryable: false
+      });
+    }
   }));
 }
 $('clearFilter').addEventListener('click', () => { expressionFilter = '전체'; renderExpressionHub(); });
@@ -2061,7 +2611,7 @@ $('revealSec').addEventListener('change', event => {
 });
 $('ttsRate').addEventListener('change', event => { state.settings.ttsRate = Number(event.target.value); saveState(); });
 $('speakQuestion').addEventListener('change', event => { state.settings.speakQuestion = event.target.checked; saveState(); });
-$('darkMode')?.addEventListener('change', event => { const theme = event.target.checked ? 'dark' : 'light'; localStorage.setItem(THEME_KEY, theme); updateTheme(theme, true); });
+$('darkMode')?.addEventListener('change', event => { const theme = event.target.checked ? 'dark' : 'light'; safeWriteText(THEME_KEY, theme); updateTheme(theme, true); });
 $('questionVoice').addEventListener('change', event => { state.settings.questionVoice = event.target.value; saveState(); });
 $('passageVoice').addEventListener('change', event => { state.settings.passageVoice = event.target.value; saveState(); });
 $('sampleQuestionVoice').addEventListener('click', () => speakText('This is the question voice.', 'question'));
@@ -2107,11 +2657,11 @@ $('importData').addEventListener('change', async event => {
     };
     if (Array.isArray(imported.expressionCards)) expressionCards = imported.expressionCards;
     if (imported.expressionReview && typeof imported.expressionReview === 'object') expressionReview = imported.expressionReview;
-    saveExpressionData();
-    saveState();
+    const expressionsSaved = saveExpressionData();
+    const stateSaved = saveState();
     syncSettings();
     renderRecords();
-    toast('JSON 기록을 가져왔습니다.');
+    toast(expressionsSaved && stateSaved ? 'JSON 기록을 가져왔습니다.' : 'JSON은 화면에 반영됐지만 브라우저 저장에 실패했습니다.');
   } catch (error) {
     alert(`JSON 가져오기에 실패했습니다.\n${error.message}`);
   } finally {
@@ -2132,22 +2682,26 @@ function safeAudioName(clip) {
 }
 
 async function exportAudioZip() {
-  if (typeof JSZip === 'undefined') return alert('ZIP 모듈을 불러오지 못했습니다. vendor/jszip.min.js 파일을 확인하세요.');
-  const clips = await dbAll();
-  const zip = new JSZip();
-  const manifest = { format: 'spa45-backup', version: 1, createdAt: new Date().toISOString(), clipCount: clips.length, entries: [] };
-  zip.file('records.json', JSON.stringify({ format: 'spa45-records-v3', exportedAt: manifest.createdAt, state, expressionCards, expressionReview }, null, 2));
-  for (const clip of clips) {
-    const file = safeAudioName(clip);
-    const data = new Uint8Array(await clip.blob.arrayBuffer());
-    const sha256 = await sha256Hex(data);
-    zip.file(file, data, { binary: true });
-    manifest.entries.push({ key: clip.key, taskId: clip.taskId, source: clip.source, sessionId: clip.sessionId, take: clip.take, title: clip.title, mime: clip.mime, ext: clip.ext || extForMime(clip.mime), metrics: clip.metrics, createdAt: clip.createdAt, file, bytes: data.byteLength, sha256 });
+  if (dbStatus !== 'ready') {
+    setDBUnavailable('녹음 저장소가 준비되지 않았습니다.');
+    return;
   }
-  zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+  if (typeof JSZip === 'undefined') return alert('ZIP 모듈을 불러오지 못했습니다. vendor/jszip.min.js 파일을 확인하세요.');
   $('exportAudio').disabled = true;
   $('exportAudio').textContent = 'ZIP 생성·검증 중…';
   try {
+    const clips = await dbAll();
+    const zip = new JSZip();
+    const manifest = { format: 'spa45-backup', version: 1, createdAt: new Date().toISOString(), clipCount: clips.length, entries: [] };
+    zip.file('records.json', JSON.stringify({ format: 'spa45-records-v3', exportedAt: manifest.createdAt, state, expressionCards, expressionReview }, null, 2));
+    for (const clip of clips) {
+      const file = safeAudioName(clip);
+      const data = new Uint8Array(await clip.blob.arrayBuffer());
+      const sha256 = await sha256Hex(data);
+      zip.file(file, data, { binary: true });
+      manifest.entries.push({ key: clip.key, taskId: clip.taskId, source: clip.source, sessionId: clip.sessionId, take: clip.take, title: clip.title, mime: clip.mime, ext: clip.ext || extForMime(clip.mime), metrics: clip.metrics, createdAt: clip.createdAt, file, bytes: data.byteLength, sha256 });
+    }
+    zip.file('manifest.json', JSON.stringify(manifest, null, 2));
     const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     const check = await JSZip.loadAsync(bytes);
     const parsed = JSON.parse(await check.file('manifest.json').async('text'));
@@ -2165,13 +2719,18 @@ async function exportAudioZip() {
     console.error(error);
     alert(`ZIP 백업 검증에 실패했습니다. 다운로드하지 않았습니다.\n${error.message}`);
   } finally {
-    $('exportAudio').disabled = false;
+    $('exportAudio').disabled = dbStatus !== 'ready';
     $('exportAudio').textContent = '전체 ZIP 백업·검증';
   }
 }
 
 async function importAudioZip(file) {
   if (!file) return;
+  if (dbStatus !== 'ready') {
+    setDBUnavailable('녹음 저장소가 준비되지 않았습니다.');
+    $('importAudio').value = '';
+    return;
+  }
   if (typeof JSZip === 'undefined') return alert('ZIP 모듈을 불러오지 못했습니다.');
   if (!confirm('ZIP의 기록과 녹음으로 현재 데이터를 교체할까요?')) return;
   try {
@@ -2208,12 +2767,12 @@ async function importAudioZip(file) {
     };
     if (Array.isArray(importedBundle.expressionCards)) expressionCards = importedBundle.expressionCards;
     if (importedBundle.expressionReview && typeof importedBundle.expressionReview === 'object') expressionReview = importedBundle.expressionReview;
-    saveExpressionData();
-    saveState();
+    const expressionsSaved = saveExpressionData();
+    const stateSaved = saveState();
     syncSettings();
     renderRecords();
     await renderStorageStats();
-    toast(`ZIP 복원 완료 · 녹음 ${restored.length}개`);
+    toast(expressionsSaved && stateSaved ? `ZIP 복원 완료 · 녹음 ${restored.length}개` : `녹음 ${restored.length}개를 복원했지만 텍스트 저장에 실패했습니다.`);
   } catch (error) {
     console.error(error);
     alert(`ZIP 복원에 실패했습니다. 기존 데이터는 검증이 끝나기 전에는 지우지 않습니다.\n${error.message}`);
@@ -2274,7 +2833,13 @@ async function updatePersistenceStatus(request = false) {
 $('persistStorage').addEventListener('click', () => updatePersistenceStatus(true));
 
 async function renderStorageStats() {
-  if (!db) return;
+  if (dbStatus !== 'ready') {
+    $('storageClipCount').textContent = '-';
+    $('storageBytes').textContent = '-';
+    $('audioCount').textContent = '-';
+    syncAudioAvailability();
+    return;
+  }
   try {
     const clips = await dbAll();
     const size = clips.reduce((total, clip) => total + (clip.blob?.size || 0), 0);
@@ -2283,8 +2848,7 @@ async function renderStorageStats() {
     $('audioCount').textContent = clips.length;
     await updatePersistenceStatus(false);
   } catch (_) {
-    $('storageStatus').textContent = '저장 기능 오류';
-    $('storageStatus').className = 'status-bad';
+    setDBUnavailable('녹음 저장소 상태를 확인할 수 없습니다.');
   }
 }
 
@@ -2295,11 +2859,21 @@ $('resetBackupCheck').addEventListener('change', syncResetButton);
 $('resetPhrase').addEventListener('input', syncResetButton);
 $('resetData').addEventListener('click', async () => {
   if ($('resetData').disabled) return;
+  if (dbStatus !== 'ready') return alert('녹음 저장소를 사용할 수 없어 전체 초기화를 안전하게 진행할 수 없습니다.');
   if (!confirm('정말로 모든 텍스트 기록과 녹음을 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return;
-  localStorage.removeItem(STORE_KEY);
-  localStorage.removeItem(EXPRESSION_CARDS_KEY);
-  localStorage.removeItem(EXPRESSION_REVIEW_KEY);
-  await dbClear();
+  try {
+    await dbClear();
+  } catch (_) {
+    setStorageIssue('recording', {
+      title: '전체 초기화 실패',
+      message: '녹음을 삭제하지 못해 텍스트 기록도 그대로 유지했습니다.',
+      retryable: false
+    });
+    return;
+  }
+  safeRemoveStorageKey(STORE_KEY);
+  safeRemoveStorageKey(EXPRESSION_CARDS_KEY);
+  safeRemoveStorageKey(EXPRESSION_REVIEW_KEY);
   state = clone(defaultState);
   expressionCards = [];
   expressionReview = {};
@@ -2319,9 +2893,16 @@ window.addEventListener('beforeunload', () => {
   revokeClipUrls();
 });
 
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushResumeSave(true);
+});
+
+window.addEventListener('pagehide', () => flushResumeSave(true));
+
 (async function boot() {
   updateTheme(preferredTheme());
   renderCourse();
+  renderResumeCard();
   syncSettings();
   renderRecords();
   renderChecks(null);

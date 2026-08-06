@@ -355,6 +355,11 @@ textarea { min-height: 132px; resize: vertical; }
 
 .notice { margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: var(--warnsoft); font-size: 13px; }
 .errornotice { background: var(--dangersoft); }
+.storage-alert { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; padding:11px 14px; border:1px solid rgba(205,76,101,.22); border-radius:16px; background:var(--dangersoft); font-size:13px; }
+.storage-alert-copy { display:grid; gap:2px; min-width:0; }
+.storage-alert-copy span { color:var(--text-body); }
+.storage-alert.is-success { border-color:rgba(26,158,122,.22); background:var(--goodsoft); }
+.file-label.is-disabled { opacity:.55; pointer-events:none; }
 .record-item { margin: 9px 0; padding: 13px; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); }
 .record-item h4 { margin: 0 0 5px; }
 .record-item p { margin: 4px 0; color: var(--muted); font-size: 12px; }
@@ -485,6 +490,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   -webkit-backdrop-filter:blur(22px) saturate(1.05); backdrop-filter:blur(22px) saturate(1.05);
 }
 .summary-card,.session-overview,.task-card,#sessionEnd { background:var(--glass-bg-strong); }
+.resume-card { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.resume-card-copy { min-width:0; }
+.resume-card h2 { margin:4px 0; }
+.resume-draft-status { margin:7px 0 0; color:var(--primary-dark); font-size:12px; font-weight:800; }
+.resume-card > .btn { flex:0 0 auto; }
 .summary-cell { border-color:rgba(132,157,205,.20); background:rgba(255,255,255,.48); box-shadow:inset 0 1px 0 rgba(255,255,255,.76); }
 .summary-cell b { color:var(--text-main); }
 .week > summary { border-radius:16px; color:var(--text-main); }
@@ -558,6 +568,10 @@ textarea::placeholder,input::placeholder { color:#8993AA; }
   .question-text{font-size:19px;line-height:1.55;}
   .listen-controls{display:grid;grid-template-columns:1fr 1fr;}
   .listen-controls .btn{min-width:0;width:100%;}
+  .storage-alert{align-items:stretch;flex-direction:column;}
+  .storage-alert .btn{width:100%;}
+  .resume-card { align-items:stretch; flex-direction:column; gap:10px; }
+  .resume-card > .btn { width:100%; }
   .photo-frame{border-radius:16px;} .photo-image{max-height:none;aspect-ratio:4/3;}
   textarea{min-height:118px;max-height:42vh;resize:vertical;} .btn{min-height:48px;}
 }
