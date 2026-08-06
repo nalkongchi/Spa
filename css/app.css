@@ -1306,6 +1306,14 @@ body.modal-open { overflow: hidden; }
 .json-import-warnings { margin-top:12px; padding:12px 14px; border-radius:14px; background:var(--warnsoft); font-size:13px; }
 .json-import-warnings ul { margin:7px 0 0; padding-left:20px; }
 .json-import-warnings li + li { margin-top:4px; }
+.zip-operation-status:empty { display:none; }
+.zip-operation-status { margin:10px 2px 0; }
+.zip-import-sheet { width:min(700px,100%); }
+.zip-import-section + .zip-import-section { margin-top:14px; }
+.zip-import-section h3 { margin:0 0 8px; font-size:15px; }
+.zip-import-progress { min-height:20px; margin:12px 0 0; }
+.zip-import-progress:empty { min-height:0; margin:0; }
+.app-modal.is-busy .app-modal-backdrop { pointer-events:none; }
 .app-modal-head {
   display: flex;
   align-items: flex-start;

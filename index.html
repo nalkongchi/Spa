@@ -365,6 +365,7 @@
           <label class="btn secondary file-label" for="importAudio">전체 ZIP 복원</label>
           <input id="importAudio" type="file" accept=".zip,application/zip" class="hidden" />
         </div>
+        <p class="muted zip-operation-status" id="zipOperationStatus" role="status" aria-live="polite"></p>
       </div>
 
       <details class="card danger-zone danger-details" id="dangerDetails">
@@ -403,6 +404,51 @@
       <p class="notice errornotice hidden" id="jsonImportFatal"></p>
       <p class="muted" id="jsonImportApplyStatus"></p>
       <div class="app-modal-actions"><button class="btn secondary" id="cancelJsonImport" type="button">취소</button><button class="btn good" id="confirmJsonImport" type="button">가져오기</button></div>
+    </div>
+  </div>
+
+  <div class="app-modal hidden" id="zipImportModal" role="dialog" aria-modal="true" aria-labelledby="zipImportTitle">
+    <div class="app-modal-backdrop" data-close-zip-import></div>
+    <div class="app-modal-sheet zip-import-sheet" role="document">
+      <div class="app-modal-head">
+        <div><div class="task-type">전체 ZIP 백업</div><h2 id="zipImportTitle">복원할 내용을 확인하세요</h2></div>
+        <button class="iconbtn modal-close" id="closeZipImport" type="button" aria-label="ZIP 복원 닫기">×</button>
+      </div>
+      <p class="json-import-file" id="zipImportFileName"></p>
+      <div id="zipImportSummary">
+        <section class="zip-import-section">
+          <h3>백업 정보</h3>
+          <div class="json-import-grid">
+            <div><span>형식·버전</span><b id="zipImportFormat">-</b></div>
+            <div><span>생성 시각</span><b id="zipImportDate">-</b></div>
+            <div><span>ZIP 크기</span><b id="zipImportSize">-</b></div>
+            <div><span>압축 항목</span><b id="zipImportEntries">0개</b></div>
+          </div>
+        </section>
+        <section class="zip-import-section">
+          <h3>텍스트 기록</h3>
+          <div class="json-import-grid">
+            <div><span>답변·평가</span><b id="zipImportRecords">0개 · 0개</b></div>
+            <div><span>이어서 하기</span><b id="zipImportResume">없음</b></div>
+            <div><span>설정·표현</span><b id="zipImportTextExtras">기본값 · 유지</b></div>
+            <div><span>제외·정리</span><b id="zipImportTextExcluded">0개</b></div>
+          </div>
+        </section>
+        <section class="zip-import-section">
+          <h3>녹음</h3>
+          <div class="json-import-grid">
+            <div><span>1차·재도전</span><b id="zipImportTakeCounts">0개 · 0개</b></div>
+            <div><span>전체 녹음</span><b id="zipImportAudioCount">0개</b></div>
+            <div><span>해제 후 크기</span><b id="zipImportAudioBytes">0 MB</b></div>
+            <div><span>제외·경고</span><b id="zipImportAudioExcluded">0개 · 0건</b></div>
+          </div>
+        </section>
+      </div>
+      <p class="notice" id="zipImportMode"></p>
+      <div class="json-import-warnings hidden" id="zipImportWarnings"><strong>확인할 내용</strong><ul id="zipImportWarningList"></ul></div>
+      <p class="notice errornotice hidden" id="zipImportFatal"></p>
+      <p class="muted zip-import-progress" id="zipImportProgress" role="status" aria-live="polite"></p>
+      <div class="app-modal-actions"><button class="btn secondary" id="cancelZipImport" type="button">취소</button><button class="btn good" id="confirmZipImport" type="button">백업 복원</button></div>
     </div>
   </div>
 

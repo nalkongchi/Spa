@@ -9,6 +9,13 @@ const THEME_KEY = 'spa45-theme';
 const EXPRESSION_CARDS_KEY = 'spa45_expression_cards_v1';
 const EXPRESSION_REVIEW_KEY = 'spa45_expression_review_v1';
 const MAX_JSON_IMPORT_BYTES = 10 * 1024 * 1024;
+const MAX_ZIP_FILE_BYTES = 128 * 1024 * 1024;
+const MAX_ZIP_ENTRIES = 1000;
+const MAX_ZIP_AUDIO_BYTES = 20 * 1024 * 1024;
+const MAX_ZIP_UNCOMPRESSED_BYTES = 192 * 1024 * 1024;
+const MAX_ZIP_MANIFEST_BYTES = 1024 * 1024;
+const MAX_ZIP_PATH_LENGTH = 240;
+const MAX_ZIP_COMPRESSION_RATIO = 200;
 
 const defaultState = {
   contentVersion: '5.1-bottleneck-packets-balanced-order',
@@ -303,6 +310,10 @@ let resumeSaveTimer = null;
 let resumeDirty = false;
 let isRestoringResume = false;
 let pendingJSONImport = null;
+let pendingZIPImport = null;
+let zipValidationBusy = false;
+let zipRestoreBusy = false;
+let zipExportBusy = false;
 
 function loadState() {
   const validState = value => isPlainObject(value)
@@ -430,6 +441,11 @@ function bytesText(bytes) {
   return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function backupBytesText(bytes) {
+  if (!bytes) return '0 MB';
+  return bytes < 1024 ? `${bytes} B` : bytesText(bytes);
+}
+
 function extForMime(mime = '') {
   const value = mime.toLowerCase();
   if (value.includes('mp4') || value.includes('m4a')) return 'm4a';
@@ -489,12 +505,17 @@ function audioOperationBusy() {
 }
 
 function blockWhileAudioBusy() {
+  if (zipRestoreBusy) {
+    alert('백업을 복원하고 있습니다. 완료될 때까지 잠시 기다려 주세요.');
+    return true;
+  }
   if (!audioOperationBusy()) return false;
   alert(recordingSaving ? '녹음을 저장하고 있습니다. 저장이 끝난 뒤 이동해 주세요.' : '녹음을 먼저 종료해 주세요.');
   return true;
 }
 
 function setTab(name, skipResumeFlush = false) {
+  if (zipRestoreBusy) return;
   if (!skipResumeFlush) flushResumeSave(true);
   stopAllSpeech();
   document.querySelectorAll('.tab').forEach(button => button.classList.toggle('active', button.dataset.tab === name));
@@ -610,23 +631,52 @@ function dbDeleteMany(keys) {
   });
 }
 
+function dbReplaceAll(values) {
+  return new Promise((resolve, reject) => {
+    let transaction;
+    let failure = null;
+    try {
+      const database = requireDB();
+      transaction = database.transaction(AUDIO_STORE, 'readwrite');
+      const store = transaction.objectStore(AUDIO_STORE);
+      store.clear();
+      values.forEach(value => store.put(value));
+    } catch (error) {
+      if (transaction) {
+        failure = error;
+        transaction.onabort = () => reject(failure);
+        transaction.onerror = () => { failure = transaction.error || failure; };
+        try { transaction.abort(); } catch (_) { reject(error); }
+        return;
+      }
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => { failure = transaction.error || new Error('IndexedDB transaction failed'); };
+    transaction.onabort = () => reject(failure || transaction.error || new Error('IndexedDB transaction aborted'));
+  });
+}
+
 function syncAudioAvailability() {
   const ready = dbStatus === 'ready';
+  const backupBusy = zipValidationBusy || zipRestoreBusy || zipExportBusy;
+  const available = ready && !backupBusy;
   const exportButton = $('exportAudio');
   const importInput = $('importAudio');
   const importLabel = document.querySelector('label[for="importAudio"]');
-  if (exportButton) exportButton.disabled = !ready;
-  if (importInput) importInput.disabled = !ready;
+  if (exportButton) exportButton.disabled = !available;
+  if (importInput) importInput.disabled = !available;
   if (importLabel) {
-    importLabel.classList.toggle('is-disabled', !ready);
-    importLabel.setAttribute('aria-disabled', ready ? 'false' : 'true');
+    importLabel.classList.toggle('is-disabled', !available);
+    importLabel.setAttribute('aria-disabled', available ? 'false' : 'true');
   }
   if ($('recordToggle')) {
-    if (!ready || recordingStarting || recordingSaving) $('recordToggle').disabled = true;
+    if (!available || recordingStarting || recordingSaving) $('recordToggle').disabled = true;
     else if (questionSeen && mediaRecorder?.state !== 'recording') $('recordToggle').disabled = false;
     if (!ready && currentSession) syncRecordingTargetHint(false);
   }
-  const lockTargets = !ready || audioOperationBusy();
+  const lockTargets = !available || audioOperationBusy();
   if ($('takeFirst')) $('takeFirst').disabled = lockTargets;
   if ($('takeRetry')) $('takeRetry').disabled = lockTargets;
 }
@@ -1684,6 +1734,7 @@ function syncRecordButton() {
 }
 
 async function startRecording() {
+  if (zipRestoreBusy) return;
   if (recordingStarting || recordingSaving || mediaRecorder?.state === 'recording') return;
   const task = currentTasks[currentTaskIndex];
   if (dbStatus !== 'ready') {
@@ -2502,6 +2553,7 @@ document.querySelector('[data-close-expression-delete]').addEventListener('click
 
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
+  if (!$('zipImportModal').classList.contains('hidden')) closeZIPImportModal();
   if (!$('jsonImportModal').classList.contains('hidden')) closeJSONImportModal();
   if (!$('expressionEditModal').classList.contains('hidden')) closeExpressionEditModal();
   if (!$('expressionDeleteModal').classList.contains('hidden')) closeExpressionDeleteModal();
@@ -3046,6 +3098,10 @@ function renderJSONImportPreview(file, result) {
 
 async function prepareJSONImport(file) {
   pendingJSONImport = null;
+  if (zipValidationBusy || zipRestoreBusy || zipExportBusy) {
+    $('importData').value = '';
+    return;
+  }
   if (!file) return;
   if (!file.size) return renderJSONImportPreview(file, { ok: false, title: '빈 파일', message: '내용이 없는 파일입니다. 다른 JSON 백업을 선택해 주세요.' });
   if (file.size > MAX_JSON_IMPORT_BYTES) return renderJSONImportPreview(file, { ok: false, title: '파일이 너무 큼', message: 'JSON 백업은 최대 10MB까지 확인할 수 있습니다. 현재 앱에서 다시 내보낸 파일인지 확인해 주세요.' });
@@ -3154,6 +3210,7 @@ async function applyPendingJSONImport() {
 }
 
 function exportJSON() {
+  if (zipValidationBusy || zipRestoreBusy || zipExportBusy) return;
   const payload = {
     format: 'spa45-records-v3',
     exportedAt: new Date().toISOString(),
@@ -3192,108 +3249,643 @@ function safeAudioName(clip) {
   return `audio/${clip.taskId}_${clip.take}.${extension}`.replace(/[^A-Za-z0-9_./-]/g, '_');
 }
 
+function zipImportError(title, message) {
+  const error = new Error(message);
+  error.userTitle = title;
+  error.userMessage = message;
+  return error;
+}
+
+function zipPathError(path) {
+  if (typeof path !== 'string' || !path || path.length > MAX_ZIP_PATH_LENGTH) return '비어 있거나 지나치게 긴 경로';
+  if (/[\0-\x1F\x7F]/.test(path)) return '제어문자가 포함된 경로';
+  if (path.includes('\\')) return '역슬래시가 포함된 경로';
+  if (path.startsWith('/') || path.startsWith('//') || /^[A-Za-z]:/.test(path) || /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(path)) return '절대·URL 형태 경로';
+  const target = path.endsWith('/') ? path.slice(0, -1) : path;
+  const segments = target.split('/');
+  if (!target || segments.some(segment => !segment || segment === '.' || segment === '..')) return '경로 순회 또는 빈 경로 조각';
+  return '';
+}
+
+function inspectZIPCentralDirectory(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const minimum = Math.max(0, bytes.length - 65557);
+  let eocd = -1;
+  for (let offset = bytes.length - 22; offset >= minimum; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd < 0) throw zipImportError('ZIP 형식 오류', 'ZIP 중앙 디렉터리를 찾을 수 없습니다. 다른 백업 파일을 선택해 주세요.');
+  const disk = view.getUint16(eocd + 4, true);
+  const centralDisk = view.getUint16(eocd + 6, true);
+  const diskEntries = view.getUint16(eocd + 8, true);
+  const entryCount = view.getUint16(eocd + 10, true);
+  const centralSize = view.getUint32(eocd + 12, true);
+  const centralOffset = view.getUint32(eocd + 16, true);
+  if (disk || centralDisk || diskEntries !== entryCount) throw zipImportError('지원하지 않는 ZIP', '여러 디스크로 나뉜 ZIP은 복원할 수 없습니다. 현재 앱에서 다시 백업해 주세요.');
+  if (entryCount === 0xFFFF || centralSize === 0xFFFFFFFF || centralOffset === 0xFFFFFFFF) throw zipImportError('지원하지 않는 ZIP', 'ZIP64 형식은 이번 버전에서 지원하지 않습니다. 더 작은 백업을 선택해 주세요.');
+  if (entryCount > MAX_ZIP_ENTRIES) throw zipImportError('ZIP 항목 수 초과', `압축 항목은 최대 ${MAX_ZIP_ENTRIES}개까지 복원할 수 있습니다.`);
+  if (centralOffset + centralSize > eocd || centralOffset < 0) throw zipImportError('ZIP 구조 오류', 'ZIP 중앙 디렉터리 위치가 올바르지 않습니다.');
+  const decoder = new TextDecoder('utf-8');
+  const entries = [];
+  const names = new Set();
+  let totalUncompressed = 0;
+  let offset = centralOffset;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + 46 > bytes.length || view.getUint32(offset, true) !== 0x02014b50) throw zipImportError('ZIP 구조 오류', '압축 항목 목록이 손상되었습니다. 다른 백업을 선택해 주세요.');
+    const flags = view.getUint16(offset + 8, true);
+    const compression = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const uncompressedSize = view.getUint32(offset + 24, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const next = offset + 46 + nameLength + extraLength + commentLength;
+    if (next > bytes.length) throw zipImportError('ZIP 구조 오류', '압축 항목 이름이나 메타데이터가 잘렸습니다.');
+    const name = decoder.decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
+    const pathIssue = zipPathError(name);
+    if (pathIssue) throw zipImportError('안전하지 않은 ZIP 경로', `ZIP 안에서 ${pathIssue} 항목을 발견해 복원을 중단했습니다.`);
+    const folded = name.toLocaleLowerCase('en-US');
+    if (names.has(folded)) throw zipImportError('중복 ZIP 경로', '동일하거나 대소문자만 다른 압축 경로가 둘 이상 있습니다.');
+    names.add(folded);
+    if (flags & 1) throw zipImportError('암호화 ZIP 미지원', '암호화된 압축 항목은 복원할 수 없습니다. 암호 없이 다시 백업해 주세요.');
+    if (compression !== 0 && compression !== 8) throw zipImportError('지원하지 않는 압축 방식', '현재 앱은 저장 또는 DEFLATE 방식 ZIP만 복원할 수 있습니다.');
+    if (uncompressedSize > 1024 * 1024 && (!compressedSize || uncompressedSize / compressedSize > MAX_ZIP_COMPRESSION_RATIO)) {
+      throw zipImportError('비정상 압축률', '압축률이 지나치게 높은 항목이 있어 ZIP 폭탄 위험으로 복원을 중단했습니다.');
+    }
+    totalUncompressed += uncompressedSize;
+    if (totalUncompressed > MAX_ZIP_UNCOMPRESSED_BYTES) throw zipImportError('압축 해제 크기 초과', `압축 해제 후 전체 데이터는 ${bytesText(MAX_ZIP_UNCOMPRESSED_BYTES)} 이하여야 합니다.`);
+    entries.push({ name, directory: name.endsWith('/'), compressedSize, uncompressedSize, flags, compression });
+    offset = next;
+  }
+  if (offset !== centralOffset + centralSize) throw zipImportError('ZIP 구조 오류', '압축 항목 목록의 크기가 중앙 디렉터리 정보와 일치하지 않습니다.');
+  return { entries, totalUncompressed };
+}
+
+function normalizedAudioMime(value = '') {
+  if (typeof value !== 'string' || value.length > 200) return null;
+  const mime = value.trim().toLowerCase();
+  const base = mime.split(';')[0];
+  const allowed = new Set(['', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/wav', 'audio/x-wav']);
+  return allowed.has(base) ? { mime, base } : null;
+}
+
+function audioExtensionKind(extension) {
+  const value = String(extension || '').toLowerCase();
+  if (value === 'webm') return 'webm';
+  if (value === 'ogg' || value === 'oga') return 'ogg';
+  if (value === 'm4a' || value === 'mp4') return 'mp4';
+  if (value === 'wav') return 'wav';
+  return '';
+}
+
+function audioMimeKind(base) {
+  if (base === 'audio/webm') return 'webm';
+  if (base === 'audio/ogg') return 'ogg';
+  if (base === 'audio/mp4' || base === 'audio/m4a' || base === 'audio/x-m4a') return 'mp4';
+  if (base === 'audio/wav' || base === 'audio/x-wav') return 'wav';
+  return '';
+}
+
+function detectAudioContainer(data) {
+  if (data.length >= 4 && data[0] === 0x1A && data[1] === 0x45 && data[2] === 0xDF && data[3] === 0xA3) return 'webm';
+  if (data.length >= 4 && String.fromCharCode(...data.subarray(0, 4)) === 'OggS') return 'ogg';
+  if (data.length >= 12 && String.fromCharCode(...data.subarray(0, 4)) === 'RIFF' && String.fromCharCode(...data.subarray(8, 12)) === 'WAVE') return 'wav';
+  if (data.length >= 12 && String.fromCharCode(...data.subarray(4, 8)) === 'ftyp') return 'mp4';
+  return '';
+}
+
+function mimeForAudioKind(kind) {
+  return kind === 'ogg' ? 'audio/ogg' : kind === 'mp4' ? 'audio/mp4' : kind === 'wav' ? 'audio/wav' : 'audio/webm';
+}
+
+function createZIPValidationStats() {
+  return { excludedAudio: 0, missingRecords: 0, invalidEntries: 0, missingFiles: 0, sizeMismatch: 0, hashMismatch: 0, mimeRepaired: 0, signatureUnknown: 0, metadataRebuilt: 0, missingTakeRefs: 0, extraFiles: 0 };
+}
+
+function zipValidationWarnings(stats) {
+  const warnings = [];
+  if (stats.invalidEntries) warnings.push(`키·경로·MIME 형식이 잘못된 녹음 ${stats.invalidEntries}개는 제외됩니다.`);
+  if (stats.missingRecords) warnings.push(`텍스트 기록이 없는 녹음 ${stats.missingRecords}개는 제외됩니다.`);
+  if (stats.missingFiles) warnings.push(`ZIP에서 읽을 수 없는 녹음 ${stats.missingFiles}개는 제외됩니다.`);
+  if (stats.sizeMismatch) warnings.push(`크기 정보가 일치하지 않는 녹음 ${stats.sizeMismatch}개는 제외됩니다.`);
+  if (stats.hashMismatch) warnings.push(`무결성 해시가 일치하지 않는 녹음 ${stats.hashMismatch}개는 제외됩니다.`);
+  if (stats.mimeRepaired) warnings.push(`MIME 정보가 비어 있어 파일 형식으로 보완한 녹음 ${stats.mimeRepaired}개가 있습니다.`);
+  if (stats.signatureUnknown) warnings.push(`파일 시그니처를 확정하지 못한 녹음 ${stats.signatureUnknown}개는 크기·MIME·해시 검증을 기준으로 복원합니다.`);
+  if (stats.metadataRebuilt) warnings.push(`Blob은 있지만 takes 정보가 없는 녹음 ${stats.metadataRebuilt}개의 메타데이터를 실제 파일 기준으로 복원합니다.`);
+  if (stats.missingTakeRefs) warnings.push(`takes 정보는 있지만 실제 Blob이 없는 녹음 ${stats.missingTakeRefs}개는 녹음 없음으로 정리됩니다.`);
+  if (stats.extraFiles) warnings.push(`manifest에 없는 추가 파일 ${stats.extraFiles}개는 무시합니다.`);
+  return warnings;
+}
+
+function validateZIPManifestHeader(manifest) {
+  if (!isPlainObject(manifest)) throw zipImportError('manifest 구조 오류', 'manifest.json의 최상위 값은 객체여야 합니다.');
+  if (!inspectJSONComplexity(manifest, 10, 50000)) throw zipImportError('manifest 구조가 너무 복잡함', 'manifest가 지나치게 깊거나 큽니다. 현재 앱에서 다시 백업해 주세요.');
+  if (manifest.format !== 'spa45-backup') throw zipImportError('지원하지 않는 manifest', 'ZIP format이 spa45-backup이 아닙니다.');
+  if (manifest.version !== 1) throw zipImportError('지원하지 않는 manifest 버전', 'manifest version 1 백업만 복원할 수 있습니다.');
+  if (!Array.isArray(manifest.entries)) throw zipImportError('manifest 항목 오류', 'manifest.entries는 배열이어야 합니다.');
+  if (manifest.entries.length > MAX_ZIP_ENTRIES) throw zipImportError('manifest 항목 수 초과', `manifest 녹음 항목은 최대 ${MAX_ZIP_ENTRIES}개까지 허용됩니다.`);
+  if (manifest.createdAt !== undefined && typeof manifest.createdAt !== 'string') throw zipImportError('manifest 날짜 오류', 'manifest 생성 시각의 자료형이 올바르지 않습니다.');
+  if (manifest.clipCount !== undefined && (!Number.isInteger(manifest.clipCount) || manifest.clipCount !== manifest.entries.length)) throw zipImportError('manifest 개수 불일치', 'clipCount와 entries 개수가 일치하지 않습니다.');
+}
+
+function validateZIPManifest(manifest, central, jsonResult, stats) {
+  validateZIPManifestHeader(manifest);
+  const centralMap = new Map(central.entries.map(entry => [entry.name, entry]));
+  const taskCatalog = importTaskCatalog();
+  const seenKeys = new Set();
+  const seenFiles = new Set();
+  const referencedFiles = new Set(['manifest.json', 'records.json']);
+  const candidates = [];
+  for (const entry of manifest.entries) {
+    if (!isPlainObject(entry) || typeof entry.key !== 'string' || typeof entry.file !== 'string') {
+      stats.invalidEntries += 1;
+      stats.excludedAudio += 1;
+      continue;
+    }
+    if (seenKeys.has(entry.key)) throw zipImportError('중복 녹음 키', `동일한 녹음 키가 둘 이상 있어 어느 파일이 맞는지 판단할 수 없습니다.`);
+    if (seenFiles.has(entry.file.toLocaleLowerCase('en-US'))) throw zipImportError('중복 manifest 경로', 'manifest에서 하나의 파일을 여러 녹음이 공유하고 있습니다.');
+    seenKeys.add(entry.key);
+    seenFiles.add(entry.file.toLocaleLowerCase('en-US'));
+    referencedFiles.add(entry.file);
+    const separator = entry.key.lastIndexOf(':');
+    const taskId = separator > 0 ? entry.key.slice(0, separator) : '';
+    const take = separator > 0 ? entry.key.slice(separator + 1) : '';
+    const catalogEntry = taskCatalog.get(taskId);
+    const archived = centralMap.get(entry.file);
+    if (!archived || archived.directory) throw zipImportError('manifest 파일 누락', 'manifest에 기록된 녹음 파일이 ZIP에 없거나 디렉터리로만 존재합니다. 다른 백업을 선택해 주세요.');
+    const extension = entry.file.includes('.') ? entry.file.split('.').pop().toLowerCase() : '';
+    const extensionKind = audioExtensionKind(extension);
+    const mime = normalizedAudioMime(entry.mime === undefined ? '' : entry.mime);
+    const expectedPrefix = `audio/${taskId}_${take}.`;
+    const validKey = !!catalogEntry && (take === 'first' || take === 'retry');
+    const validMetadata = (entry.taskId === undefined || entry.taskId === taskId) && (entry.take === undefined || entry.take === take);
+    const validPath = !zipPathError(entry.file) && entry.file.startsWith(expectedPrefix) && entry.file.indexOf('/', 6) < 0 && !!extensionKind;
+    const validBytes = Number.isInteger(entry.bytes) && entry.bytes > 0;
+    const mimeKind = mime ? audioMimeKind(mime.base) : '';
+    const mimeMatchesExtension = mime && (!mimeKind || mimeKind === extensionKind);
+    if (!validKey || !validMetadata || !validPath || !validBytes || !mimeMatchesExtension || !archived || archived.directory) {
+      if (!archived || archived?.directory) stats.missingFiles += 1;
+      else stats.invalidEntries += 1;
+      stats.excludedAudio += 1;
+      continue;
+    }
+    if (archived.uncompressedSize !== entry.bytes || entry.bytes > MAX_ZIP_AUDIO_BYTES) {
+      stats.sizeMismatch += 1;
+      stats.excludedAudio += 1;
+      continue;
+    }
+    if (entry.sha256 !== undefined && entry.sha256 !== null && (typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(entry.sha256))) {
+      stats.invalidEntries += 1;
+      stats.excludedAudio += 1;
+      continue;
+    }
+    if (!jsonResult.normalized.state.records[taskId]) {
+      stats.missingRecords += 1;
+      stats.excludedAudio += 1;
+      continue;
+    }
+    candidates.push({ entry, taskId, take, catalogEntry, extension, extensionKind, mime, archived });
+  }
+  central.entries.filter(entry => !entry.directory && !referencedFiles.has(entry.name)).forEach(() => { stats.extraFiles += 1; });
+  return candidates;
+}
+
+async function extractZIPAudio(zip, candidates, jsonState, manifestCreatedAt, stats) {
+  const clips = [];
+  const restoredKeys = new Set();
+  const expectedKeys = new Set();
+  Object.entries(jsonState.records).forEach(([taskId, record]) => {
+    for (const take of ['first', 'retry']) if (record.takes?.[take]) expectedKeys.add(`${taskId}:${take}`);
+  });
+  for (const candidate of candidates) {
+    let data;
+    try {
+      data = await zip.file(candidate.entry.file).async('uint8array');
+    } catch (_) {
+      stats.missingFiles += 1;
+      stats.excludedAudio += 1;
+      continue;
+    }
+    if (!data.byteLength || data.byteLength !== candidate.entry.bytes) {
+      stats.sizeMismatch += 1;
+      stats.excludedAudio += 1;
+      data = null;
+      continue;
+    }
+    if (candidate.entry.sha256) {
+      const hash = await sha256Hex(data);
+      if (hash && hash !== candidate.entry.sha256.toLowerCase()) {
+        stats.hashMismatch += 1;
+        stats.excludedAudio += 1;
+        data = null;
+        continue;
+      }
+    }
+    const detectedKind = detectAudioContainer(data);
+    const declaredKind = candidate.mime ? audioMimeKind(candidate.mime.base) : '';
+    if (detectedKind && declaredKind && detectedKind !== declaredKind) {
+      stats.invalidEntries += 1;
+      stats.excludedAudio += 1;
+      data = null;
+      continue;
+    }
+    if (!detectedKind) stats.signatureUnknown += 1;
+    let finalMime = candidate.mime?.mime || '';
+    if (!finalMime) {
+      finalMime = mimeForAudioKind(detectedKind || candidate.extensionKind);
+      stats.mimeRepaired += 1;
+    }
+    const record = jsonState.records[candidate.taskId];
+    const jsonTake = record.takes?.[candidate.take];
+    const metrics = isPlainObject(candidate.entry.metrics) ? candidate.entry.metrics : {};
+    const duration = Number.isFinite(metrics.duration) && metrics.duration >= 0 ? metrics.duration : (Number.isFinite(jsonTake?.duration) ? jsonTake.duration : 0);
+    const createdAt = typeof candidate.entry.createdAt === 'string' ? candidate.entry.createdAt : (typeof metrics.createdAt === 'string' ? metrics.createdAt : (typeof jsonTake?.createdAt === 'string' ? jsonTake.createdAt : (typeof manifestCreatedAt === 'string' ? manifestCreatedAt : '')));
+    const takeData = { duration, mime: finalMime, createdAt };
+    if (!jsonTake) stats.metadataRebuilt += 1;
+    const task = candidate.catalogEntry.task;
+    const session = candidate.catalogEntry.session;
+    clips.push({
+      key: candidate.entry.key,
+      taskId: candidate.taskId,
+      source: task.source,
+      sessionId: session.id,
+      take: candidate.take,
+      title: task.title,
+      blob: new Blob([data], { type: finalMime }),
+      mime: finalMime,
+      ext: candidate.extension,
+      metrics: takeData,
+      createdAt
+    });
+    restoredKeys.add(candidate.entry.key);
+    data = null;
+  }
+  expectedKeys.forEach(key => { if (!restoredKeys.has(key)) stats.missingTakeRefs += 1; });
+  Object.values(jsonState.records).forEach(record => { record.takes = {}; });
+  clips.forEach(clip => { jsonState.records[clip.taskId].takes[clip.take] = clip.metrics; });
+  return clips;
+}
+
+function setZIPControlState() {
+  const backupBusy = zipValidationBusy || zipRestoreBusy || zipExportBusy;
+  syncAudioAvailability();
+  $('exportData').disabled = backupBusy;
+  $('importData').disabled = backupBusy;
+  $('persistStorage').disabled = zipRestoreBusy;
+  $('themeQuick').disabled = zipRestoreBusy;
+  document.querySelectorAll('.tab').forEach(button => { button.disabled = zipRestoreBusy; });
+  document.querySelector('label[for="importData"]')?.setAttribute('aria-disabled', backupBusy ? 'true' : 'false');
+}
+
+function setZIPOperationStatus(message = '') {
+  $('zipOperationStatus').textContent = message;
+}
+
+function resetZIPImportUI() {
+  pendingZIPImport = null;
+  $('importAudio').value = '';
+  $('zipImportProgress').textContent = '';
+}
+
+function closeZIPImportModal() {
+  if (zipRestoreBusy) return;
+  setModalOpen($('zipImportModal'), false);
+  resetZIPImportUI();
+}
+
+function renderZIPImportPreview(file, result) {
+  $('zipImportFileName').textContent = `${file.name} · ${backupBytesText(file.size)}`;
+  $('zipImportFatal').classList.toggle('hidden', result.ok);
+  $('zipImportSummary').classList.toggle('hidden', !result.ok);
+  $('zipImportMode').classList.toggle('hidden', !result.ok);
+  $('zipImportWarnings').classList.toggle('hidden', !result.ok || !result.preview?.warnings.length);
+  $('confirmZipImport').disabled = !result.ok;
+  if (!result.ok) {
+    $('zipImportFatal').textContent = `${result.title}: ${result.message}`;
+    $('zipImportWarningList').replaceChildren();
+  } else {
+    const preview = result.preview;
+    $('zipImportFormat').textContent = `${preview.format} · v${preview.version}`;
+    const createdDate = preview.createdAt ? new Date(preview.createdAt) : null;
+    $('zipImportDate').textContent = createdDate && !Number.isNaN(createdDate.getTime()) ? createdDate.toLocaleString('ko-KR') : '시간 정보 없음';
+    $('zipImportSize').textContent = backupBytesText(file.size);
+    $('zipImportEntries').textContent = `${preview.entryCount}개`;
+    $('zipImportRecords').textContent = `${preview.recordCount}개 · 평가 ${preview.evaluatedCount}개`;
+    $('zipImportResume').textContent = preview.resumeStatus === 'valid' ? '유효함' : preview.resumeStatus === 'invalid' ? '제외 예정' : '없음';
+    $('zipImportTextExtras').textContent = `${preview.settingsIncluded ? '설정 포함' : '기본 설정'} · ${preview.expressionsIncluded ? '표현 교체' : '표현 유지'}`;
+    $('zipImportTextExcluded').textContent = `${preview.textExcludedCount}개`;
+    $('zipImportTakeCounts').textContent = `${preview.firstCount}개 · ${preview.retryCount}개`;
+    $('zipImportAudioCount').textContent = `${preview.audioCount}개`;
+    $('zipImportAudioBytes').textContent = backupBytesText(preview.audioBytes);
+    $('zipImportAudioExcluded').textContent = `${preview.audioExcluded}개 · 경고 ${preview.audioWarningCount}건`;
+    $('zipImportMode').textContent = `텍스트 기록은 교체됩니다. ${preview.expressionsIncluded ? '백업의 표현 카드·복습 데이터도 교체됩니다.' : '표현 데이터는 포함되지 않아 현재 값을 유지합니다.'} 기존 녹음은 ZIP의 검증된 녹음 전체로 교체되며, ZIP에 없는 기존 녹음은 삭제됩니다. 취소하거나 복원에 실패하면 기존 데이터를 유지합니다.`;
+    const list = $('zipImportWarningList');
+    list.replaceChildren();
+    preview.warnings.forEach(message => {
+      const item = document.createElement('li');
+      item.textContent = message;
+      list.appendChild(item);
+    });
+  }
+  setModalOpen($('zipImportModal'), true);
+  requestAnimationFrame(() => (result.ok ? $('cancelZipImport') : $('closeZipImport')).focus());
+}
+
+async function prepareZIPImport(file) {
+  pendingZIPImport = null;
+  if (!file || zipValidationBusy || zipRestoreBusy || zipExportBusy) return;
+  if (dbStatus !== 'ready') {
+    setDBUnavailable('녹음 저장소가 준비되지 않았습니다.');
+    $('importAudio').value = '';
+    return;
+  }
+  if (typeof JSZip === 'undefined') {
+    $('importAudio').value = '';
+    return alert('ZIP 모듈을 불러오지 못했습니다. vendor/jszip.min.js 파일을 확인해 주세요.');
+  }
+  if (!file.size) return renderZIPImportPreview(file, { ok: false, title: '빈 ZIP 파일', message: '파일 내용이 없습니다. 다른 백업을 선택해 주세요.' });
+  if (file.size > MAX_ZIP_FILE_BYTES) return renderZIPImportPreview(file, { ok: false, title: 'ZIP 파일 크기 초과', message: `ZIP 원본은 최대 ${bytesText(MAX_ZIP_FILE_BYTES)}까지 복원할 수 있습니다.` });
+  zipValidationBusy = true;
+  setZIPControlState();
+  setZIPOperationStatus('백업 검사 중…');
+  let raw = null;
+  let zip = null;
+  try {
+    try { raw = await file.arrayBuffer(); }
+    catch (_) { throw zipImportError('ZIP 파일 읽기 실패', '파일을 읽을 수 없습니다. 파일 권한을 확인하거나 다른 백업을 선택해 주세요.'); }
+    const central = inspectZIPCentralDirectory(raw);
+    try { zip = await JSZip.loadAsync(raw); }
+    catch (_) { throw zipImportError('ZIP 형식 오류', 'ZIP으로 해석할 수 없거나 지원하지 않는 압축 방식입니다.'); }
+    const centralMap = new Map(central.entries.map(entry => [entry.name, entry]));
+    const manifestEntry = centralMap.get('manifest.json');
+    const recordsEntry = centralMap.get('records.json');
+    if (!manifestEntry || manifestEntry.directory || !recordsEntry || recordsEntry.directory) throw zipImportError('필수 파일 누락', 'manifest.json 또는 records.json이 없습니다. 다른 백업을 선택해 주세요.');
+    if (manifestEntry.uncompressedSize > MAX_ZIP_MANIFEST_BYTES) throw zipImportError('manifest 크기 초과', `manifest.json은 ${bytesText(MAX_ZIP_MANIFEST_BYTES)} 이하여야 합니다.`);
+    if (recordsEntry.uncompressedSize > MAX_JSON_IMPORT_BYTES) throw zipImportError('텍스트 기록 크기 초과', `records.json은 ${bytesText(MAX_JSON_IMPORT_BYTES)} 이하여야 합니다.`);
+    let manifest;
+    let importedJSON;
+    try { manifest = JSON.parse(await zip.file('manifest.json').async('text')); }
+    catch (_) { throw zipImportError('manifest JSON 오류', 'manifest.json을 읽거나 해석할 수 없습니다.'); }
+    validateZIPManifestHeader(manifest);
+    try { importedJSON = JSON.parse(await zip.file('records.json').async('text')); }
+    catch (_) { throw zipImportError('텍스트 JSON 오류', 'records.json을 읽거나 JSON으로 해석할 수 없습니다.'); }
+    const jsonResult = validateJSONBackup(importedJSON, { name: 'records.json', size: recordsEntry.uncompressedSize, type: 'application/json', lastModified: file.lastModified });
+    importedJSON = null;
+    if (!jsonResult.ok) throw zipImportError('텍스트 JSON 검증 실패', `${jsonResult.title}: ${jsonResult.message}`);
+    const stats = createZIPValidationStats();
+    const candidates = validateZIPManifest(manifest, central, jsonResult, stats);
+    $('zipOperationStatus').textContent = '녹음 복원 준비 중…';
+    const clips = await extractZIPAudio(zip, candidates, jsonResult.normalized.state, manifest.createdAt, stats);
+    const zipWarnings = zipValidationWarnings(stats);
+    const warnings = [...jsonResult.preview.warnings, ...zipWarnings];
+    const audioBytes = clips.reduce((total, clip) => total + clip.blob.size, 0);
+    const result = {
+      ok: true,
+      normalized: { bundle: jsonResult.normalized, clips },
+      preview: {
+        format: manifest.format,
+        version: manifest.version,
+        createdAt: manifest.createdAt,
+        entryCount: central.entries.length,
+        recordCount: jsonResult.preview.recordCount,
+        evaluatedCount: jsonResult.preview.evaluatedCount,
+        resumeStatus: jsonResult.preview.resumeStatus,
+        settingsIncluded: jsonResult.preview.settingsIncluded,
+        expressionsIncluded: jsonResult.preview.expressionsIncluded,
+        textExcludedCount: jsonResult.preview.excludedCount,
+        firstCount: clips.filter(clip => clip.take === 'first').length,
+        retryCount: clips.filter(clip => clip.take === 'retry').length,
+        audioCount: clips.length,
+        audioBytes,
+        audioExcluded: stats.excludedAudio,
+        audioWarningCount: zipWarnings.length,
+        warnings
+      }
+    };
+    if (file.name.toLowerCase().endsWith('.zip') === false || (file.type && !['application/zip', 'application/x-zip-compressed', 'application/octet-stream'].includes(file.type))) {
+      result.preview.warnings.unshift('파일 확장자 또는 MIME은 일반 ZIP과 다르지만 내용 검증을 기준으로 처리했습니다.');
+    }
+    pendingZIPImport = result.normalized;
+    renderZIPImportPreview(file, result);
+  } catch (error) {
+    renderZIPImportPreview(file, { ok: false, title: error.userTitle || 'ZIP 검증 실패', message: error.userMessage || '백업을 안전하게 확인하지 못했습니다. 다른 백업을 선택해 주세요.' });
+  } finally {
+    raw = null;
+    zip = null;
+    zipValidationBusy = false;
+    setZIPOperationStatus('');
+    setZIPControlState();
+  }
+}
+
+function stageZIPStorage(bundle) {
+  let entries;
+  try { entries = serializeImportEntries(bundle); }
+  catch (error) {
+    storageWriteIssue(STORE_KEY, error, 'serialize');
+    return { ok: false, rollbackFailed: false };
+  }
+  const originals = new Map();
+  try { entries.forEach(entry => originals.set(entry.key, localStorage.getItem(entry.key))); }
+  catch (error) {
+    storageWriteIssue(STORE_KEY, error, 'write');
+    return { ok: false, rollbackFailed: false };
+  }
+  const written = [];
+  try {
+    entries.forEach(entry => {
+      localStorage.setItem(entry.key, entry.serialized);
+      written.push(entry.key);
+    });
+    return { ok: true, entries, originals };
+  } catch (error) {
+    let rollbackFailed = false;
+    written.reverse().forEach(key => {
+      try {
+        const original = originals.get(key);
+        if (original === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, original);
+      } catch (_) { rollbackFailed = true; }
+    });
+    storageWriteIssue(STORE_KEY, error, 'write');
+    return { ok: false, rollbackFailed };
+  }
+}
+
+function rollbackZIPStorage(stage) {
+  let success = true;
+  stage.entries.forEach(entry => {
+    try {
+      const original = stage.originals.get(entry.key);
+      if (original === null) localStorage.removeItem(entry.key);
+      else localStorage.setItem(entry.key, original);
+    } catch (_) { success = false; }
+  });
+  return success;
+}
+
+function finalizeZIPStorage(stage) {
+  stage.entries.forEach(entry => {
+    storageReadBlocks.delete(entry.key);
+    storageIssues.delete(`read:${entry.key}`);
+    storageIssues.delete(`write:${entry.key}`);
+  });
+  storageIssues.delete('zip-rollback');
+  renderStorageAlert();
+}
+
+async function applyPendingZIPImport() {
+  if (!pendingZIPImport || zipRestoreBusy) return;
+  zipRestoreBusy = true;
+  setZIPControlState();
+  $('zipImportModal').classList.add('is-busy');
+  $('closeZipImport').disabled = true;
+  $('cancelZipImport').disabled = true;
+  $('confirmZipImport').disabled = true;
+  $('zipImportProgress').textContent = '텍스트 기록 저장 중…';
+  const target = pendingZIPImport;
+  const storageStage = stageZIPStorage(target.bundle);
+  if (!storageStage.ok) {
+    $('zipImportProgress').textContent = storageStage.rollbackFailed
+      ? '텍스트 저장에 실패했고 원래 값을 완전히 확인하지 못했습니다. 녹음은 변경되지 않았습니다. 현재 탭을 닫지 말고 다른 백업을 보관해 주세요.'
+      : '텍스트 저장에 실패했습니다. 기존 텍스트와 녹음은 유지됩니다. 저장소 설정을 확인한 뒤 다시 시도해 주세요.';
+    zipRestoreBusy = false;
+    $('zipImportModal').classList.remove('is-busy');
+    $('closeZipImport').disabled = false;
+    $('cancelZipImport').disabled = false;
+    $('confirmZipImport').disabled = false;
+    setZIPControlState();
+    return;
+  }
+  $('zipImportProgress').textContent = `녹음 복원 중 · ${target.clips.length}개를 하나의 안전한 작업으로 저장하고 있습니다.`;
+  try {
+    await dbReplaceAll(target.clips);
+  } catch (_) {
+    $('zipImportProgress').textContent = '복원 실패 · 기존 데이터 복구 중…';
+    const rolledBack = rollbackZIPStorage(storageStage);
+    if (!rolledBack) {
+      setStorageIssue('zip-rollback', {
+        title: 'ZIP 복원 롤백 확인 필요',
+        message: '녹음은 기존 상태로 유지됐지만 텍스트 원문 복원에 실패했습니다. 성공 안내가 표시되지 않았으며, 현재 데이터를 더 수정하지 말고 백업을 보관해 주세요.',
+        retryable: false
+      });
+      $('zipImportProgress').textContent = '녹음은 기존 상태로 유지됐지만 텍스트는 일부 적용됐을 수 있습니다. 다른 작업을 하지 말고 백업을 보관해 주세요.';
+    } else {
+      $('zipImportProgress').textContent = '복원에 실패했으며 기존 텍스트와 녹음은 그대로 유지됩니다. 다시 시도하거나 다른 백업을 선택해 주세요.';
+    }
+    zipRestoreBusy = false;
+    $('zipImportModal').classList.remove('is-busy');
+    $('closeZipImport').disabled = false;
+    $('cancelZipImport').disabled = false;
+    $('confirmZipImport').disabled = false;
+    setZIPControlState();
+    return;
+  }
+  $('zipImportProgress').textContent = '최종 확인 중…';
+  finalizeZIPStorage(storageStage);
+  state = target.bundle.state;
+  if (target.bundle.expressions.cards !== null) expressionCards = target.bundle.expressions.cards;
+  if (target.bundle.expressions.review !== null) expressionReview = target.bundle.expressions.review;
+  revokeClipUrls();
+  let refreshFailed = false;
+  try {
+    syncSettings();
+    renderRecords();
+    renderExpressionHub();
+    await renderStorageStats();
+    if (currentSession && currentTasks[currentTaskIndex]) await loadTakes(currentTasks[currentTaskIndex]);
+  } catch (_) {
+    refreshFailed = true;
+    $('zipImportProgress').textContent = '복원 저장은 완료됐지만 화면을 새로 그리지 못했습니다. 페이지를 새로고침해 주세요.';
+  } finally {
+    zipRestoreBusy = false;
+    $('zipImportModal').classList.remove('is-busy');
+    $('closeZipImport').disabled = false;
+    $('cancelZipImport').disabled = false;
+    setZIPControlState();
+  }
+  if (refreshFailed) return;
+  setModalOpen($('zipImportModal'), false);
+  resetZIPImportUI();
+  toast(`ZIP 복원 완료 · 녹음 ${target.clips.length}개`);
+}
+
 async function exportAudioZip() {
   if (dbStatus !== 'ready') {
     setDBUnavailable('녹음 저장소가 준비되지 않았습니다.');
     return;
   }
   if (typeof JSZip === 'undefined') return alert('ZIP 모듈을 불러오지 못했습니다. vendor/jszip.min.js 파일을 확인하세요.');
-  $('exportAudio').disabled = true;
-  $('exportAudio').textContent = 'ZIP 생성·검증 중…';
+  if (zipValidationBusy || zipRestoreBusy || zipExportBusy) return;
+  zipExportBusy = true;
+  setZIPControlState();
+  setZIPOperationStatus('ZIP 생성 준비 중…');
+  let clips = [];
+  let zip = null;
+  let output = null;
   try {
-    const clips = await dbAll();
-    const zip = new JSZip();
-    const manifest = { format: 'spa45-backup', version: 1, createdAt: new Date().toISOString(), clipCount: clips.length, entries: [] };
-    zip.file('records.json', JSON.stringify({ format: 'spa45-records-v3', exportedAt: manifest.createdAt, state, expressionCards, expressionReview }, null, 2));
+    clips = await dbAll();
+    if (clips.length + 3 > MAX_ZIP_ENTRIES) throw zipImportError('녹음 개수 초과', `ZIP에는 최대 ${MAX_ZIP_ENTRIES - 3}개의 녹음을 담을 수 있습니다.`);
+    const taskCatalog = importTaskCatalog();
+    const keys = new Set();
+    const paths = new Set();
+    let totalAudioBytes = 0;
     for (const clip of clips) {
-      const file = safeAudioName(clip);
+      const expectedKey = `${clip.taskId}:${clip.take}`;
+      if (!taskCatalog.has(clip.taskId) || (clip.take !== 'first' && clip.take !== 'retry') || clip.key !== expectedKey || keys.has(clip.key)) throw zipImportError('녹음 키 오류', '저장된 녹음 키가 현재 문제·first/retry 규칙과 일치하지 않아 불완전 ZIP을 만들지 않았습니다.');
+      if (!(clip.blob instanceof Blob) || !clip.blob.size || clip.blob.size > MAX_ZIP_AUDIO_BYTES) throw zipImportError('녹음 파일 크기 오류', `비어 있거나 ${bytesText(MAX_ZIP_AUDIO_BYTES)}를 넘는 녹음이 있어 ZIP을 만들지 않았습니다.`);
+      const mime = normalizedAudioMime(clip.mime || clip.blob.type || '');
+      if (!mime) throw zipImportError('녹음 MIME 오류', '지원하지 않는 녹음 MIME이 있어 ZIP을 만들지 않았습니다.');
+      const exportExt = extForMime(clip.mime || clip.blob.type);
+      const path = safeAudioName({ ...clip, ext: exportExt });
+      if (zipPathError(path) || paths.has(path.toLocaleLowerCase('en-US'))) throw zipImportError('녹음 경로 충돌', '둘 이상의 녹음이 같은 ZIP 경로를 사용해 백업을 중단했습니다.');
+      keys.add(clip.key);
+      paths.add(path.toLocaleLowerCase('en-US'));
+      totalAudioBytes += clip.blob.size;
+    }
+    if (totalAudioBytes > MAX_ZIP_UNCOMPRESSED_BYTES) throw zipImportError('백업 크기 초과', `녹음 전체 크기는 ${bytesText(MAX_ZIP_UNCOMPRESSED_BYTES)} 이하여야 합니다.`);
+    zip = new JSZip();
+    const manifest = { format: 'spa45-backup', version: 1, createdAt: new Date().toISOString(), clipCount: clips.length, entries: [] };
+    const recordsText = JSON.stringify({ format: 'spa45-records-v3', exportedAt: manifest.createdAt, state, expressionCards, expressionReview }, null, 2);
+    if (new Blob([recordsText]).size > MAX_JSON_IMPORT_BYTES) throw zipImportError('텍스트 기록 크기 초과', `records.json이 ${bytesText(MAX_JSON_IMPORT_BYTES)}를 넘어 ZIP을 만들지 않았습니다.`);
+    zip.file('records.json', recordsText);
+    for (const clip of clips) {
+      setZIPOperationStatus(`녹음 확인 중 · ${manifest.entries.length + 1} / ${clips.length}`);
+      const exportExt = extForMime(clip.mime || clip.blob.type);
+      const file = safeAudioName({ ...clip, ext: exportExt });
       const data = new Uint8Array(await clip.blob.arrayBuffer());
       const sha256 = await sha256Hex(data);
-      zip.file(file, data, { binary: true });
-      manifest.entries.push({ key: clip.key, taskId: clip.taskId, source: clip.source, sessionId: clip.sessionId, take: clip.take, title: clip.title, mime: clip.mime, ext: clip.ext || extForMime(clip.mime), metrics: clip.metrics, createdAt: clip.createdAt, file, bytes: data.byteLength, sha256 });
+      zip.file(file, clip.blob);
+      manifest.entries.push({ key: clip.key, taskId: clip.taskId, source: clip.source, sessionId: clip.sessionId, take: clip.take, title: clip.title, mime: clip.mime || clip.blob.type || '', ext: exportExt, metrics: clip.metrics, createdAt: clip.createdAt, file, bytes: clip.blob.size, sha256 });
     }
     zip.file('manifest.json', JSON.stringify(manifest, null, 2));
-    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-    const check = await JSZip.loadAsync(bytes);
-    const parsed = JSON.parse(await check.file('manifest.json').async('text'));
-    if (parsed.clipCount !== clips.length || !check.file('records.json')) throw new Error('manifest count mismatch');
-    for (const entry of parsed.entries) {
-      const archived = check.file(entry.file);
-      if (!archived) throw new Error(`missing ${entry.file}`);
-      const data = await archived.async('uint8array');
-      if (data.byteLength !== entry.bytes) throw new Error(`size mismatch ${entry.file}`);
-      if (entry.sha256 && await sha256Hex(data) !== entry.sha256) throw new Error(`hash mismatch ${entry.file}`);
-    }
-    downloadBlob(new Blob([bytes], { type: 'application/zip' }), `spa45_full_backup_${new Date().toISOString().slice(0, 10)}.zip`);
+    setZIPOperationStatus('ZIP 압축 중…');
+    output = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    if (!output.size || output.size > MAX_ZIP_FILE_BYTES) throw zipImportError('ZIP 결과 크기 초과', `생성된 ZIP이 ${bytesText(MAX_ZIP_FILE_BYTES)}를 넘어 다운로드하지 않았습니다.`);
+    downloadBlob(output, `spa45_full_backup_${new Date().toISOString().slice(0, 10)}.zip`);
     toast(`ZIP 검증 완료 · 녹음 ${clips.length}개`);
   } catch (error) {
-    console.error(error);
-    alert(`ZIP 백업 검증에 실패했습니다. 다운로드하지 않았습니다.\n${error.message}`);
+    alert(`${error.userTitle || 'ZIP 백업 실패'}: ${error.userMessage || 'ZIP을 완성하지 못해 다운로드하지 않았습니다. 기존 데이터는 변경되지 않았습니다.'}`);
   } finally {
-    $('exportAudio').disabled = dbStatus !== 'ready';
-    $('exportAudio').textContent = '전체 ZIP 백업·검증';
-  }
-}
-
-async function importAudioZip(file) {
-  if (!file) return;
-  if (dbStatus !== 'ready') {
-    setDBUnavailable('녹음 저장소가 준비되지 않았습니다.');
-    $('importAudio').value = '';
-    return;
-  }
-  if (typeof JSZip === 'undefined') return alert('ZIP 모듈을 불러오지 못했습니다.');
-  if (!confirm('ZIP의 기록과 녹음으로 현재 데이터를 교체할까요?')) return;
-  try {
-    const zip = await JSZip.loadAsync(file);
-    const manifestFile = zip.file('manifest.json');
-    const recordsFile = zip.file('records.json');
-    if (!manifestFile || !recordsFile) throw new Error('manifest.json 또는 records.json이 없습니다.');
-    const manifest = JSON.parse(await manifestFile.async('text'));
-    if (manifest.format !== 'spa45-backup' || !Array.isArray(manifest.entries)) throw new Error('지원하지 않는 백업 형식입니다.');
-    const importedBundle = JSON.parse(await recordsFile.async('text'));
-    const nextState = importedBundle.state || importedBundle;
-    const restored = [];
-    for (const entry of manifest.entries) {
-      const archived = zip.file(entry.file);
-      if (!archived) throw new Error(`녹음 누락: ${entry.file}`);
-      const data = await archived.async('uint8array');
-      if (data.byteLength !== entry.bytes) throw new Error(`크기 불일치: ${entry.file}`);
-      if (entry.sha256 && await sha256Hex(data) !== entry.sha256) throw new Error(`무결성 불일치: ${entry.file}`);
-      restored.push({ ...entry, blob: new Blob([data], { type: entry.mime || 'application/octet-stream' }) });
-    }
-    await dbClear();
-    for (const clip of restored) {
-      await dbPut({ key: clip.key, taskId: clip.taskId, source: clip.source, sessionId: clip.sessionId, take: clip.take, title: clip.title, blob: clip.blob, mime: clip.mime, ext: clip.ext, metrics: clip.metrics, createdAt: clip.createdAt });
-    }
-    state = {
-      ...clone(defaultState),
-      ...nextState,
-      settings: { ...defaultState.settings, ...(nextState.settings || {}) },
-      records: nextState.records || {},
-      reviewMeta: nextState.reviewMeta || {},
-      completed: nextState.completed || {},
-      startedSessions: nextState.startedSessions || {},
-      sessionHistory: nextState.sessionHistory || {}
-    };
-    if (Array.isArray(importedBundle.expressionCards)) expressionCards = importedBundle.expressionCards;
-    if (importedBundle.expressionReview && typeof importedBundle.expressionReview === 'object') expressionReview = importedBundle.expressionReview;
-    const expressionsSaved = saveExpressionData();
-    const stateSaved = saveState();
-    syncSettings();
-    renderRecords();
-    await renderStorageStats();
-    toast(expressionsSaved && stateSaved ? `ZIP 복원 완료 · 녹음 ${restored.length}개` : `녹음 ${restored.length}개를 복원했지만 텍스트 저장에 실패했습니다.`);
-  } catch (error) {
-    console.error(error);
-    alert(`ZIP 복원에 실패했습니다. 기존 데이터는 검증이 끝나기 전에는 지우지 않습니다.\n${error.message}`);
-  } finally {
-    $('importAudio').value = '';
+    clips.length = 0;
+    zip = null;
+    output = null;
+    zipExportBusy = false;
+    setZIPOperationStatus('');
+    setZIPControlState();
   }
 }
 
 $('exportAudio').addEventListener('click', exportAudioZip);
-$('importAudio').addEventListener('change', event => importAudioZip(event.target.files?.[0]));
+$('importAudio').addEventListener('change', event => prepareZIPImport(event.target.files?.[0]));
+$('closeZipImport').addEventListener('click', closeZIPImportModal);
+$('cancelZipImport').addEventListener('click', closeZIPImportModal);
+$('confirmZipImport').addEventListener('click', applyPendingZIPImport);
+document.querySelector('[data-close-zip-import]').addEventListener('click', closeZIPImportModal);
 
 function setPersistButtonLabel(desktop, mobile = desktop) {
   const button = $('persistStorage');
