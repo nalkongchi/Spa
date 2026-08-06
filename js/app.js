@@ -71,6 +71,12 @@ const DIFFICULTY_LABELS = {
   5: '매우 어려움'
 };
 
+const VALID_OUTCOMES = new Set(['fail', 'partial', 'success']);
+
+function isEvaluationComplete(record) {
+  return VALID_OUTCOMES.has(record?.outcome);
+}
+
 function syncDifficultyUI() {
   document.querySelectorAll('#rating button').forEach(button => {
     const selected = Number(button.dataset.rate) === currentDifficulty;
@@ -645,13 +651,13 @@ async function openSession(id) {
 function updateSessionProgressUI() {
   const total = currentTasks.length;
   const current = total ? currentTaskIndex + 1 : 0;
-  const progressValue = total ? Math.round((current / total) * 100) : 0;
+  const completed = currentTasks.filter(task => isEvaluationComplete(state.records[task.id])).length;
+  const progressValue = total ? Math.round((completed / total) * 100) : 0;
   $('sessionProgress').style.width = `${progressValue}%`;
   $('sessionProgressTrack')?.setAttribute('aria-valuenow', String(progressValue));
-  if ($('mobileSessionProgress')) {
-    $('mobileSessionProgress').textContent = `${current} / ${total}`;
-    $('mobileSessionProgress').setAttribute('aria-label', `현재 ${current}번, 전체 ${total}문제`);
-  }
+  $('sessionProgressTrack')?.setAttribute('aria-label', `평가 완료 ${completed}/${total}`);
+  if ($('sessionPosition')) $('sessionPosition').textContent = `${current} / ${total}`;
+  if ($('sessionCompleted')) $('sessionCompleted').textContent = `${completed} / ${total}`;
 }
 
 function syncTaskNavArrows() {
@@ -669,7 +675,7 @@ function renderTaskNav() {
   currentTasks.forEach((task, index) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `task-dot${index === currentTaskIndex ? ' active' : ''}${state.records[task.id]?.outcome ? ' done' : ''}`;
+    button.className = `task-dot${index === currentTaskIndex ? ' active' : ''}${isEvaluationComplete(state.records[task.id]) ? ' done' : ''}`;
     button.textContent = index + 1;
     button.title = task.title;
     button.setAttribute('aria-label', `${index + 1}번 문제 · ${task.title}`);
@@ -1179,6 +1185,7 @@ function hideQuestion() {
   $('countdown').classList.add('hidden');
   questionHiddenAt = performance.now();
   if (mediaRecorder?.state !== 'recording') $('recordToggle').disabled = false;
+  syncRecordingTargetHint(true);
   if (!replayUsed) {
     $('revealBtn').textContent = '질문 1회 다시 보기';
     $('revealBtn').disabled = false;
@@ -1325,6 +1332,15 @@ function setTake(which) {
   recordingTarget = which;
   $('takeFirst').classList.toggle('selected', which === 'first');
   $('takeRetry').classList.toggle('selected', which === 'retry');
+  syncRecordingTargetHint(questionSeen && !$('recordToggle').disabled);
+}
+
+function syncRecordingTargetHint(ready = false) {
+  if (mediaRecorder?.state === 'recording') return;
+  const target = recordingTarget === 'first' ? '1차 녹음' : '재도전 녹음';
+  $('recordLabel').textContent = ready
+    ? `저장 위치: ${target} · 녹음 시작을 누르세요.`
+    : `저장 위치: ${target} · 질문 확인 후 녹음을 시작하세요.`;
 }
 $('takeFirst').addEventListener('click', () => setTake('first'));
 $('takeRetry').addEventListener('click', () => setTake('retry'));
@@ -1476,6 +1492,8 @@ function showEvaluation() {
   if (!hasAudio && !hasTranscript && !confirm('녹음과 받아쓰기가 모두 비어 있습니다. 평가 화면으로 넘어갈까요?')) return;
   saveDraft();
   stage = 'evaluation';
+  $('selfDiagnosisDetails').open = false;
+  $('expressionDetails').open = false;
   $('answerStage').classList.add('hidden');
   $('evaluationStage').classList.remove('hidden');
   const task = currentTasks[currentTaskIndex];
@@ -1505,8 +1523,7 @@ function finishSession() {
   stopLiveResources();
   $('taskCard').classList.add('hidden');
   $('sessionEnd').classList.remove('hidden');
-  $('sessionProgress').style.width = '100%';
-  $('sessionProgressTrack')?.setAttribute('aria-valuenow', '100');
+  updateSessionProgressUI();
   const canStartBooster = !!(currentSession?.mock5 && !boosterMode && currentBoosterTasks.length);
   $('startBooster')?.classList.toggle('hidden', !canStartBooster);
   if ($('sessionEndTitle')) $('sessionEndTitle').textContent = boosterMode ? '약점 보강 완료' : '회차 완료';

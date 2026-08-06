@@ -64,7 +64,10 @@
         <div class="card session-overview">
           <div class="session-head">
             <div>
-              <div class="mobile-session-progress" id="mobileSessionProgress">0 / 0</div>
+              <div class="session-progress-summary" aria-live="polite">
+                <span class="session-progress-item"><span>현재 위치</span><b id="sessionPosition">0 / 0</b></span>
+                <span class="session-progress-item"><span>평가 완료</span><b id="sessionCompleted">0 / 0</b></span>
+              </div>
               <div class="task-type" id="sessionMeta"></div>
               <h2 id="sessionTitle"></h2>
               <p id="sessionDesc" class="muted"></p>
@@ -106,8 +109,8 @@
 
             <div class="record-box">
               <div class="take-switch">
-                <button class="btn secondary selected" id="takeFirst" type="button">1차 답변 녹음</button>
-                <button class="btn secondary" id="takeRetry" type="button">재도전 녹음</button>
+                <button class="btn secondary selected" id="takeFirst" type="button">1차 녹음 선택</button>
+                <button class="btn secondary" id="takeRetry" type="button">재도전 녹음 선택</button>
               </div>
               <div class="record-status">
                 <div id="recordLabel">질문이 사라진 뒤 녹음을 시작하세요.</div>
@@ -141,72 +144,85 @@
               </div>
             </div>
 
-            <div class="field">
-              <label>이번 답변에서 걸린 부분 <small>복수 선택</small></label>
-              <p class="muted field-help">해당하는 것만 선택하세요. 선택하지 않은 항목은 문제가 없었다는 뜻이 아닙니다.</p>
-              <div class="checks" id="checks"></div>
+            <details class="evaluation-details" id="selfDiagnosisDetails">
+              <summary><span>상세 자기진단 <small>선택</small></span></summary>
+              <div class="evaluation-details-body">
+                <div class="field">
+                  <label>이번 답변에서 걸린 부분 <small>복수 선택</small></label>
+                  <p class="muted field-help">해당하는 것만 선택하세요. 선택하지 않은 항목은 문제가 없었다는 뜻이 아닙니다.</p>
+                  <div class="checks" id="checks"></div>
+                </div>
+
+                <div class="field">
+                  <label>이 문제의 체감 난이도</label>
+                  <div class="rating difficulty-rating" id="rating" aria-label="체감 난이도 선택">
+                    <button data-rate="1" type="button"><b>1</b><small>매우 쉬움</small></button>
+                    <button data-rate="2" type="button"><b>2</b><small>쉬움</small></button>
+                    <button data-rate="3" type="button"><b>3</b><small>보통</small></button>
+                    <button data-rate="4" type="button"><b>4</b><small>어려움</small></button>
+                    <button data-rate="5" type="button"><b>5</b><small>매우 어려움</small></button>
+                  </div>
+                  <div class="difficulty-scale-labels" aria-hidden="true"><span>매우 쉬움</span><span>매우 어려움</span></div>
+                  <p class="difficulty-selection" id="difficultySelection" aria-live="polite">난이도를 선택하지 않았습니다.</p>
+                  <p class="muted field-help difficulty-help">1은 매우 쉬움, 5는 매우 어려움입니다. 답변 점수가 아닙니다.</p>
+                </div>
+
+                <label class="checkitem retry-check"><input type="checkbox" id="retryFlag" /> 이 문제는 기록에서 다시 확인할 필요가 있다</label>
+              </div>
+            </details>
+
+            <div class="evaluation-actions evaluation-primary-actions">
+              <button class="btn good" id="nextTask" type="button">평가 저장하고 다음 문제</button>
             </div>
 
-            <div class="field">
-              <label>이 문제의 체감 난이도</label>
-              <div class="rating difficulty-rating" id="rating" aria-label="체감 난이도 선택">
-                <button data-rate="1" type="button"><b>1</b><small>매우 쉬움</small></button>
-                <button data-rate="2" type="button"><b>2</b><small>쉬움</small></button>
-                <button data-rate="3" type="button"><b>3</b><small>보통</small></button>
-                <button data-rate="4" type="button"><b>4</b><small>어려움</small></button>
-                <button data-rate="5" type="button"><b>5</b><small>매우 어려움</small></button>
-              </div>
-              <div class="difficulty-scale-labels" aria-hidden="true"><span>매우 쉬움</span><span>매우 어려움</span></div>
-              <p class="difficulty-selection" id="difficultySelection" aria-live="polite">난이도를 선택하지 않았습니다.</p>
-              <p class="muted field-help difficulty-help">1은 매우 쉬움, 5는 매우 어려움입니다. 답변 점수가 아닙니다.</p>
-            </div>
-
-            <label class="checkitem retry-check"><input type="checkbox" id="retryFlag" /> 이 문제는 기록에서 다시 확인할 필요가 있다</label>
-
-            <section class="expression-capture" aria-labelledby="expressionCaptureTitle">
-              <div class="expression-capture-head">
-                <div>
-                  <div class="task-type">재사용 표현</div>
-                  <h3 id="expressionCaptureTitle">이 답변에서 다시 쓰고 싶은 표현</h3>
-                </div>
-                <span class="expression-optional">선택</span>
-              </div>
-              <p class="muted expression-help">긴 답안 전체보다 다른 문제에도 쓸 수 있는 짧은 덩어리나 빈칸 문장틀을 저장하세요.</p>
-              <div id="expressionSuggestions" class="expression-suggestions"></div>
-              <div class="expression-form-grid">
-                <div class="field">
-                  <label for="expressionText">기억할 표현</label>
-                  <input id="expressionText" type="text" maxlength="180" placeholder="예: One practical solution would be to ___." />
-                </div>
-                <div class="field">
-                  <label for="expressionCue">한국어 회상 단서</label>
-                  <input id="expressionCue" type="text" maxlength="180" placeholder="예: 실용적인 해결책을 제안할 때" />
-                </div>
-                <div class="field expression-example-field">
-                  <label for="expressionExample">내 예문</label>
-                  <textarea id="expressionExample" maxlength="600" placeholder="예: One practical solution would be to provide additional training."></textarea>
-                </div>
-                <div class="field">
-                  <label for="expressionCategory">말하기 기능</label>
-                  <select id="expressionCategory"></select>
-                </div>
-              </div>
-              <div class="expression-save-row">
-                <div id="expressionSaveStatus" class="listen-status" aria-live="polite"></div>
-                <button class="btn secondary" id="saveExpression" type="button">표현 카드로 저장</button>
-              </div>
-            </section>
-
-            <div class="evaluation-actions">
+            <div class="evaluation-actions evaluation-secondary-actions">
               <button class="btn secondary" id="backToAnswer" type="button">답변 화면으로</button>
               <button class="btn secondary" id="taskPromptBtn" type="button">이 답변 피드백 자료</button>
-              <button class="btn good" id="nextTask" type="button">평가 저장하고 다음 문제</button>
             </div>
 
             <div id="taskPromptArea" class="hidden prompt-area">
               <div class="prompt" id="taskPrompt"></div>
               <button class="btn secondary small" id="copyTaskPrompt" type="button">피드백 자료 복사</button>
             </div>
+
+            <details class="evaluation-details expression-details" id="expressionDetails">
+              <summary><span>표현 저장 <small>선택</small></span></summary>
+              <div class="evaluation-details-body">
+                <section class="expression-capture" aria-labelledby="expressionCaptureTitle">
+                  <div class="expression-capture-head">
+                    <div>
+                      <div class="task-type">재사용 표현</div>
+                      <h3 id="expressionCaptureTitle">이 답변에서 다시 쓰고 싶은 표현</h3>
+                    </div>
+                    <span class="expression-optional">선택</span>
+                  </div>
+                  <p class="muted expression-help">긴 답안 전체보다 다른 문제에도 쓸 수 있는 짧은 덩어리나 빈칸 문장틀을 저장하세요.</p>
+                  <div id="expressionSuggestions" class="expression-suggestions"></div>
+                  <div class="expression-form-grid">
+                    <div class="field">
+                      <label for="expressionText">기억할 표현</label>
+                      <input id="expressionText" type="text" maxlength="180" placeholder="예: One practical solution would be to ___." />
+                    </div>
+                    <div class="field">
+                      <label for="expressionCue">한국어 회상 단서</label>
+                      <input id="expressionCue" type="text" maxlength="180" placeholder="예: 실용적인 해결책을 제안할 때" />
+                    </div>
+                    <div class="field expression-example-field">
+                      <label for="expressionExample">내 예문</label>
+                      <textarea id="expressionExample" maxlength="600" placeholder="예: One practical solution would be to provide additional training."></textarea>
+                    </div>
+                    <div class="field">
+                      <label for="expressionCategory">말하기 기능</label>
+                      <select id="expressionCategory"></select>
+                    </div>
+                  </div>
+                  <div class="expression-save-row">
+                    <div id="expressionSaveStatus" class="listen-status" aria-live="polite"></div>
+                    <button class="btn secondary" id="saveExpression" type="button">표현 카드로 저장</button>
+                  </div>
+                </section>
+              </div>
+            </details>
           </div>
         </div>
 
