@@ -71,6 +71,19 @@ const DIFFICULTY_LABELS = {
   5: '매우 어려움'
 };
 
+function syncDifficultyUI() {
+  document.querySelectorAll('#rating button').forEach(button => {
+    const selected = Number(button.dataset.rate) === currentDifficulty;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+  if ($('difficultySelection')) {
+    $('difficultySelection').textContent = currentDifficulty
+      ? `선택: ${currentDifficulty} · ${DIFFICULTY_LABELS[currentDifficulty]}`
+      : '난이도를 선택하지 않았습니다.';
+  }
+}
+
 const EXPRESSION_CATEGORIES = ['의견 말하기','이유 설명','장점 설명','예시 들기','비교하기','문제 설명','문제 해결','해결책 제안','경험 이야기','사진 묘사','그래프 비교','추측하기','결론 내리기','요약','가정 상황','자기소개','추천과 설득','조언하기','습관 설명','시간 벌기','기타'];
 
 const $ = id => document.getElementById(id);
@@ -242,7 +255,6 @@ function setTab(name) {
   document.querySelectorAll('.panel').forEach(panel => panel.classList.toggle('active', panel.id === `panel-${name}`));
   if (name === 'records') renderRecords();
   if (name === 'settings') renderStorageStats();
-  syncMobileActionBar();
 }
 
 document.querySelectorAll('.tab').forEach(button => {
@@ -630,6 +642,27 @@ async function openSession(id) {
   setTab('practice');
 }
 
+function updateSessionProgressUI() {
+  const total = currentTasks.length;
+  const current = total ? currentTaskIndex + 1 : 0;
+  const progressValue = total ? Math.round((current / total) * 100) : 0;
+  $('sessionProgress').style.width = `${progressValue}%`;
+  $('sessionProgressTrack')?.setAttribute('aria-valuenow', String(progressValue));
+  if ($('mobileSessionProgress')) {
+    $('mobileSessionProgress').textContent = `${current} / ${total}`;
+    $('mobileSessionProgress').setAttribute('aria-label', `현재 ${current}번, 전체 ${total}문제`);
+  }
+}
+
+function syncTaskNavArrows() {
+  const nav = $('taskNav');
+  if (!nav) return;
+  const tolerance = 2;
+  const canScroll = nav.scrollWidth > nav.clientWidth + tolerance;
+  $('navLeft').disabled = !canScroll || nav.scrollLeft <= tolerance;
+  $('navRight').disabled = !canScroll || nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - tolerance;
+}
+
 function renderTaskNav() {
   const nav = $('taskNav');
   nav.innerHTML = '';
@@ -639,6 +672,8 @@ function renderTaskNav() {
     button.className = `task-dot${index === currentTaskIndex ? ' active' : ''}${state.records[task.id]?.outcome ? ' done' : ''}`;
     button.textContent = index + 1;
     button.title = task.title;
+    button.setAttribute('aria-label', `${index + 1}번 문제 · ${task.title}`);
+    if (index === currentTaskIndex) button.setAttribute('aria-current', 'step');
     button.addEventListener('click', async () => {
       if (mediaRecorder?.state === 'recording') return alert('녹음을 먼저 종료해 주세요.');
       saveBeforeNavigate();
@@ -646,14 +681,17 @@ function renderTaskNav() {
     });
     nav.appendChild(button);
   });
-  const progressValue = Math.round((currentTaskIndex / Math.max(currentTasks.length, 1)) * 100);
-  $('sessionProgress').style.width = `${progressValue}%`;
-  $('sessionProgressTrack')?.setAttribute('aria-valuenow', String(progressValue));
-  requestAnimationFrame(() => nav.querySelector('.active')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }));
+  updateSessionProgressUI();
+  requestAnimationFrame(() => {
+    nav.querySelector('.active')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    requestAnimationFrame(syncTaskNavArrows);
+  });
 }
 
+$('taskNav').addEventListener('scroll', syncTaskNavArrows, { passive: true });
 $('navLeft').addEventListener('click', () => $('taskNav').scrollBy({ left: -240, behavior: 'smooth' }));
 $('navRight').addEventListener('click', () => $('taskNav').scrollBy({ left: 240, behavior: 'smooth' }));
+window.addEventListener('resize', syncTaskNavArrows);
 
 function taskTypeName(task) {
   const base = {
@@ -783,7 +821,7 @@ async function loadTask(index) {
   }
   currentDifficulty = old.difficulty || 0;
   currentOutcome = old.outcome || '';
-  document.querySelectorAll('#rating button').forEach(button => button.classList.toggle('selected', Number(button.dataset.rate) === currentDifficulty));
+  syncDifficultyUI();
   document.querySelectorAll('#outcome button').forEach(button => button.classList.toggle('selected', button.dataset.outcome === currentOutcome));
   $('taskPromptArea').classList.add('hidden');
   resetExpressionCapture(task);
@@ -791,7 +829,6 @@ async function loadTask(index) {
   await loadTakes(task);
   $('revealRule').textContent = `현재 문제 표시시간: ${effectiveRevealSec(task)}초 · 다시보기 동일 · 1회 가능`;
   renderTaskNav();
-  syncMobileActionBar();
   const scrollTarget = sameVisualGroup ? $('questionShell') : $('practiceArea');
   window.scrollTo({ top: Math.max(0, scrollTarget.offsetTop - 12), behavior: 'smooth' });
 }
@@ -1132,7 +1169,6 @@ function revealQuestion(isReplay = false) {
     $('countdown').textContent = `${left}초`;
     if (left <= 0) hideQuestion();
   }, 1000);
-  syncMobileActionBar();
 }
 
 function hideQuestion() {
@@ -1150,7 +1186,6 @@ function hideQuestion() {
   } else {
     $('revealBtn').classList.add('hidden');
   }
-  syncMobileActionBar();
 }
 
 $('revealBtn').addEventListener('click', () => revealQuestion(questionSeen));
@@ -1186,7 +1221,6 @@ function syncRecordButton() {
   button.textContent = recording ? '■ 녹음 종료' : '● 녹음 시작';
   button.classList.toggle('danger', !recording);
   button.classList.toggle('secondary', recording);
-  syncMobileActionBar();
 }
 
 async function startRecording() {
@@ -1448,7 +1482,6 @@ function showEvaluation() {
   $('evaluationTitle').textContent = `${currentTaskIndex + 1}/${currentTasks.length} · 오늘 답변 돌아보기`;
   $('evaluationQuestion').textContent = fullQuestion(task);
   $('evaluationTranscript').textContent = $('transcript').value.trim() ? `받아쓰기: ${$('transcript').value.trim()}` : '받아쓰기 없음';
-  syncMobileActionBar();
   window.scrollTo({ top: Math.max(0, $('taskCard').offsetTop - 8), behavior: 'smooth' });
 }
 
@@ -1456,7 +1489,6 @@ function showAnswer() {
   stage = 'answer';
   $('evaluationStage').classList.add('hidden');
   $('answerStage').classList.remove('hidden');
-  syncMobileActionBar();
   window.scrollTo({ top: Math.max(0, $('taskCard').offsetTop - 8), behavior: 'smooth' });
 }
 
@@ -1481,7 +1513,6 @@ function finishSession() {
   if ($('sessionEndText')) $('sessionEndText').textContent = canStartBooster
     ? '실전 구간이 끝났습니다. 회차를 완료하거나 선택 약점 보강을 이어갈 수 있습니다.'
     : '받아쓴 답변을 모아 오늘 회차 종합 자료를 만들 수 있습니다.';
-  syncMobileActionBar();
   window.scrollTo({ top: Math.max(0, $('sessionEnd').offsetTop - 20), behavior: 'smooth' });
 }
 
@@ -1514,7 +1545,7 @@ $('completeSession').addEventListener('click', () => {
 document.querySelectorAll('#rating button').forEach(button => {
   button.addEventListener('click', () => {
     currentDifficulty = Number(button.dataset.rate);
-    document.querySelectorAll('#rating button').forEach(item => item.classList.toggle('selected', item === button));
+    syncDifficultyUI();
   });
 });
 
@@ -1522,8 +1553,7 @@ document.querySelectorAll('#outcome button').forEach(button => {
   button.addEventListener('click', () => {
     currentOutcome = button.dataset.outcome;
     document.querySelectorAll('#outcome button').forEach(item => item.classList.toggle('selected', item === button));
-    syncMobileActionBar();
-  });
+    });
 });
 
 function outcomeLabel(value) {
@@ -1821,24 +1851,53 @@ function renderExpressionHub() {
   root.querySelectorAll('[data-expression-delete]').forEach(button => button.addEventListener('click', () => deleteExpressionCard(button.dataset.expressionDelete)));
 }
 
+function setModalOpen(modal, open) {
+  if (!modal) return;
+  modal.classList.toggle('hidden', !open);
+  document.body.classList.toggle('modal-open', open || !!document.querySelector('.app-modal:not(.hidden)'));
+}
+
+function populateExpressionEditCategories(selected = '기타') {
+  const select = $('editExpressionCategory');
+  if (!select) return;
+  select.innerHTML = EXPRESSION_CATEGORIES.map(category => `<option value="${esc(category)}">${esc(category)}</option>`).join('');
+  select.value = EXPRESSION_CATEGORIES.includes(selected) ? selected : '기타';
+}
+
 function editExpressionCard(cardId) {
   const card = expressionCards.find(item => item.id === cardId);
   if (!card) return;
-  const expression = prompt('기억할 표현', card.expression);
-  if (expression === null || !expression.trim()) return;
-  const cue = prompt('한국어 회상 단서', card.cue || '');
-  if (cue === null) return;
-  const example = prompt('내 예문', card.example || '');
-  if (example === null) return;
-  const category = prompt(`말하기 기능\n${EXPRESSION_CATEGORIES.join(' / ')}`, card.category || '기타');
-  if (category === null) return;
-  card.expression = expression.trim();
-  card.cue = cue.trim();
-  card.example = example.trim();
-  card.category = EXPRESSION_CATEGORIES.includes(category.trim()) ? category.trim() : '기타';
+  $('editExpressionId').value = card.id;
+  $('editExpressionText').value = card.expression || '';
+  $('editExpressionCue').value = card.cue || '';
+  $('editExpressionExample').value = card.example || '';
+  populateExpressionEditCategories(card.category || '기타');
+  setModalOpen($('expressionEditModal'), true);
+  requestAnimationFrame(() => $('editExpressionText').focus());
+}
+
+function closeExpressionEditModal() {
+  setModalOpen($('expressionEditModal'), false);
+  $('editExpressionId').value = '';
+}
+
+function saveExpressionCardEdit() {
+  const card = expressionCards.find(item => item.id === $('editExpressionId').value);
+  if (!card) return closeExpressionEditModal();
+  const expression = $('editExpressionText').value.trim();
+  if (!expression) {
+    $('editExpressionText').focus();
+    return toast('기억할 표현을 입력해 주세요.');
+  }
+  card.expression = expression;
+  card.cue = $('editExpressionCue').value.trim();
+  card.example = $('editExpressionExample').value.trim();
+  card.category = EXPRESSION_CATEGORIES.includes($('editExpressionCategory').value) ? $('editExpressionCategory').value : '기타';
   card.updatedAt = new Date().toISOString();
   saveExpressionData();
+  closeExpressionEditModal();
   renderExpressionHub();
+  toast('표현 카드를 수정했습니다.');
 }
 
 function resetExpressionReview(cardId) {
@@ -1849,12 +1908,42 @@ function resetExpressionReview(cardId) {
 
 function deleteExpressionCard(cardId) {
   const card = expressionCards.find(item => item.id === cardId);
-  if (!card || !confirm(`“${card.expression}” 표현 카드를 삭제할까요?`)) return;
+  if (!card) return;
+  $('deleteExpressionId').value = card.id;
+  $('expressionDeleteMessage').textContent = `“${card.expression}” 카드는 삭제 후 복구할 수 없습니다.`;
+  setModalOpen($('expressionDeleteModal'), true);
+  requestAnimationFrame(() => $('cancelExpressionDelete').focus());
+}
+
+function closeExpressionDeleteModal() {
+  setModalOpen($('expressionDeleteModal'), false);
+  $('deleteExpressionId').value = '';
+}
+
+function confirmExpressionCardDelete() {
+  const cardId = $('deleteExpressionId').value;
+  if (!cardId) return closeExpressionDeleteModal();
   expressionCards = expressionCards.filter(item => item.id !== cardId);
   delete expressionReview[cardId];
   saveExpressionData();
+  closeExpressionDeleteModal();
   renderExpressionHub();
+  toast('표현 카드를 삭제했습니다.');
 }
+
+$('closeExpressionEdit').addEventListener('click', closeExpressionEditModal);
+$('cancelExpressionEdit').addEventListener('click', closeExpressionEditModal);
+$('saveExpressionEdit').addEventListener('click', saveExpressionCardEdit);
+document.querySelector('[data-close-expression-modal]').addEventListener('click', closeExpressionEditModal);
+$('cancelExpressionDelete').addEventListener('click', closeExpressionDeleteModal);
+$('confirmExpressionDelete').addEventListener('click', confirmExpressionCardDelete);
+document.querySelector('[data-close-expression-delete]').addEventListener('click', closeExpressionDeleteModal);
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if (!$('expressionEditModal').classList.contains('hidden')) closeExpressionEditModal();
+  if (!$('expressionDeleteModal').classList.contains('hidden')) closeExpressionDeleteModal();
+});
 
 function startExpressionReview() {
   expressionReviewQueue = expressionCards.filter(card => isExpressionDue(card.id)).sort((a, b) => (expressionMeta(a.id).nextDueAt || 0) - (expressionMeta(b.id).nextDueAt || 0));
@@ -2119,6 +2208,16 @@ async function importAudioZip(file) {
 $('exportAudio').addEventListener('click', exportAudioZip);
 $('importAudio').addEventListener('change', event => importAudioZip(event.target.files?.[0]));
 
+function setPersistButtonLabel(desktop, mobile = desktop) {
+  const button = $('persistStorage');
+  if (!button) return;
+  const desktopNode = button.querySelector('.desktop-copy');
+  const mobileNode = button.querySelector('.mobile-copy');
+  if (desktopNode) desktopNode.textContent = desktop;
+  else button.textContent = desktop;
+  if (mobileNode) mobileNode.textContent = mobile;
+}
+
 async function updatePersistenceStatus(request = false) {
   const status = $('storageStatus');
   const help = $('storageHelp');
@@ -2138,14 +2237,14 @@ async function updatePersistenceStatus(request = false) {
       status.className = 'status-good';
       help.textContent = '브라우저가 이 사이트 저장소의 우선 보존을 승인했습니다. 중요한 기록은 ZIP으로도 백업하세요.';
       button.disabled = true;
-      button.textContent = '보존 저장 승인됨';
+      setPersistButtonLabel('보존 저장 승인됨', '승인 완료');
       return true;
     }
     status.textContent = '일반 저장 · 백업 권장';
     status.className = 'status-warn';
     help.textContent = '브라우저 정리나 사이트 데이터 삭제 시 사라질 수 있습니다.';
     button.disabled = false;
-    button.textContent = request ? '승인되지 않음 · 다시 요청' : '저장 보존 요청';
+    setPersistButtonLabel(request ? '승인되지 않음 · 다시 요청' : '저장 보존 요청', request ? '다시 요청' : '저장 유지');
     return false;
   } catch (_) {
     status.textContent = '상태 확인 오류';
@@ -2197,8 +2296,6 @@ $('resetData').addEventListener('click', async () => {
   toast('전체 초기화가 완료되었습니다.');
 });
 
-function syncMobileActionBar() {}
-
 window.addEventListener('beforeunload', () => {
   stopAllSpeech();
   stopLiveResources();
@@ -2211,8 +2308,9 @@ window.addEventListener('beforeunload', () => {
   syncSettings();
   renderRecords();
   renderChecks(null);
+  populateExpressionEditCategories();
+  syncDifficultyUI();
   if (typeof JSZip === 'undefined') console.warn('JSZip missing');
   await initDB();
   await updateStats();
-  syncMobileActionBar();
 })();
