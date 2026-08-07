@@ -80,10 +80,10 @@
   --warnsoft: rgba(229,189,117,.12);
   --danger: #F08A9D;
   --dangersoft: rgba(240,138,157,.12);
-  --header: rgba(15,20,29,.90);
-  --header2: rgba(24,31,44,.92);
+  --header: #162a47;
+  --header2: #13243d;
   --shadow: 0 16px 40px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.04);
-  --bg-main: #0B0E14;
+  --bg-main: #0B111B;
   --bg-blue: #162A4B;
   --bg-lavender: #272249;
   --glass-bg: rgba(25,31,42,.76);
@@ -630,20 +630,19 @@ body::after {
 
 :root[data-theme="dark"] body {
   background:
-    radial-gradient(circle at 8% 18%, rgba(89,137,210,.11), transparent 34%),
-    radial-gradient(circle at 90% 78%, rgba(143,126,210,.09), transparent 38%),
-    linear-gradient(145deg, #090C12 0%, #0E131C 52%, #121823 100%);
+    radial-gradient(circle at 12% 0%, rgba(88,132,210,.05), transparent 32%),
+    linear-gradient(180deg, #0B111B 0%, #090F18 100%);
   color: var(--text-body);
 }
 
 :root[data-theme="dark"] body::before {
-  opacity: .34;
-  background: radial-gradient(circle, rgba(89,137,210,.16), transparent 70%);
+  opacity: .22;
+  background: radial-gradient(circle, rgba(88,132,210,.11), transparent 70%);
 }
 
 :root[data-theme="dark"] body::after {
-  opacity: .30;
-  background: radial-gradient(circle, rgba(143,126,210,.14), transparent 72%);
+  opacity: .12;
+  background: radial-gradient(circle, rgba(88,132,210,.08), transparent 72%);
 }
 
 .theme-toggle {
@@ -670,26 +669,28 @@ body::after {
 
 :root[data-theme="dark"] .fixed-header {
   color: var(--text-main);
-  background: rgba(13,18,27,.88);
-  border-bottom-color: rgba(211,225,255,.09);
-  box-shadow: 0 10px 32px rgba(0,0,0,.26);
-  -webkit-backdrop-filter: blur(16px) saturate(1.02);
-  backdrop-filter: blur(16px) saturate(1.02);
+  background:
+    radial-gradient(circle at 88% -15%, rgba(88,132,210,.18), transparent 36%),
+    linear-gradient(180deg, #1B3150 0%, #162A47 48%, #13243D 100%);
+  border-bottom-color: #315076;
+  box-shadow: 0 10px 32px rgba(0,0,0,.30);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 :root[data-theme="dark"] .brand p { color: var(--text-secondary); }
 :root[data-theme="dark"] .iconbtn {
-  border-color: rgba(184,207,255,.14);
-  background: rgba(36,44,59,.72);
-  color: var(--primary-light);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  border-color: #3D6088;
+  background: #1B3151;
+  color: #91A6FF;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
 }
 :root[data-theme="dark"] .tabs {
-  border-color: rgba(184,207,255,.10);
-  background: rgba(25,32,44,.68);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+  border-color: #2F4B6B;
+  background: #102038;
+  box-shadow: inset 0 0 0 1px #2F4B6B, inset 0 -1px 0 rgba(5,12,23,.55);
 }
-:root[data-theme="dark"] .tab { color: var(--text-secondary); }
+:root[data-theme="dark"] .tab { color: #A6B8CF; }
 :root[data-theme="dark"] .tab.active {
   border-color: rgba(184,207,255,.18);
   background: linear-gradient(135deg, #659EEF 0%, #748FE8 52%, #8E7FDC 100%);
@@ -1100,7 +1101,11 @@ body::after {
 }
 
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  :root[data-theme="dark"] .fixed-header,
+  :root[data-theme="dark"] .fixed-header {
+    background:
+      radial-gradient(circle at 88% -15%, rgba(88,132,210,.18), transparent 36%),
+      linear-gradient(180deg, #1B3150 0%, #162A47 48%, #13243D 100%);
+  }
   :root[data-theme="dark"] .card { background: rgba(24,30,41,.98); }
 }
 
