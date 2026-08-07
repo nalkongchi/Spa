@@ -188,8 +188,8 @@
 
 
             <div class="evaluation-actions evaluation-secondary-actions">
-              <button class="btn secondary" id="backToAnswer" type="button">답변 화면으로</button>
               <button class="btn secondary" id="taskPromptBtn" type="button">ChatGPT 피드백 자료</button>
+              <button class="btn secondary" id="backToAnswer" type="button">← 답변 화면으로</button>
             </div>
 
             <details class="evaluation-details answer-strategy-details hidden" id="answerStrategyDetails">
@@ -255,10 +255,10 @@
           <h2 id="sessionEndTitle">회차 완료</h2>
           <p id="sessionEndText">받아쓴 답변을 모아 오늘 회차 종합 자료를 만들 수 있습니다.</p>
           <div class="btnrow">
-            <button class="btn" id="sessionPromptBtn" type="button">오늘 회차 종합 자료</button>
+            <button class="btn good" id="completeSession" type="button">완료 표시하고 과정으로</button>
             <button class="btn secondary hidden" id="startBooster" type="button">선택 약점 보강 시작</button>
             <button class="btn secondary" id="restartSession" type="button">이 회차 다시 보기</button>
-            <button class="btn good" id="completeSession" type="button">완료 표시하고 과정으로</button>
+            <button class="btn secondary" id="sessionPromptBtn" type="button">회차 종합 자료 보기</button>
           </div>
           <div id="sessionPromptArea" class="hidden prompt-area">
             <div class="prompt" id="sessionPrompt"></div>

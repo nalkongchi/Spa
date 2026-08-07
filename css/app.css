@@ -1627,3 +1627,24 @@ body.modal-open { overflow: hidden; }
   line-height: 1.4;
   text-align: center;
 }
+
+.session.pending {
+  background: var(--warnsoft);
+  border-color: color-mix(in srgb, var(--warn) 48%, var(--line));
+}
+.session.pending .session-status {
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 850;
+}
+.session-pending-cta {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+#sessionEnd .btnrow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#sessionEnd #completeSession { grid-column: 1 / -1; }
+#sessionEnd .btn { width: 100%; }
