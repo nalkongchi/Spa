@@ -186,13 +186,10 @@
               </div>
             </details>
 
-            <div class="evaluation-actions evaluation-primary-actions">
-              <button class="btn good" id="nextTask" type="button">평가 저장하고 다음 문제</button>
-            </div>
 
             <div class="evaluation-actions evaluation-secondary-actions">
               <button class="btn secondary" id="backToAnswer" type="button">답변 화면으로</button>
-              <button class="btn secondary" id="taskPromptBtn" type="button">이 답변 피드백 자료</button>
+              <button class="btn secondary" id="taskPromptBtn" type="button">ChatGPT 피드백 자료</button>
             </div>
 
             <details class="evaluation-details answer-strategy-details hidden" id="answerStrategyDetails">
@@ -245,6 +242,12 @@
                 </section>
               </div>
             </details>
+
+            <p class="evaluation-next-note">피드백과 재답변을 마쳤다면 다음 문제로 이동하세요.</p>
+
+            <div class="evaluation-actions evaluation-primary-actions">
+              <button class="btn good" id="nextTask" type="button">평가 저장하고 다음 문제</button>
+            </div>
           </div>
         </div>
 
@@ -347,6 +350,13 @@
         <div id="voiceStatus" class="listen-status voice-status">영어 음성 목록을 준비하고 있습니다.</div>
         <label class="checkitem settings-check"><input type="checkbox" id="speakQuestion" /> 질문을 처음 표시할 때 영어로 읽어주기</label>
         <input type="checkbox" id="darkMode" class="hidden" tabindex="-1" aria-hidden="true" />
+      </div>
+
+      <div class="card chatgpt-coach-card">
+        <h2>ChatGPT 학습 코치</h2>
+        <p class="muted">ChatGPT 대화방을 SPA 전용 학습 코치로 설정합니다. 시작 프롬프트를 복사해 새 대화의 첫 메시지로 붙여 넣으세요.</p>
+        <p class="setting-note">이후에는 문제별 피드백 또는 회차 종합 분석 프롬프트를 같은 대화방에 붙여 넣어 사용할 수 있습니다.</p>
+        <button class="btn secondary full" id="copyChatGPTStarterPrompt" type="button">ChatGPT 시작 프롬프트 복사</button>
       </div>
 
       <div class="card storage-card">
