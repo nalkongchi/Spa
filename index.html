@@ -106,7 +106,6 @@
           <div id="answerStage">
             <div class="task-type" id="taskType"></div>
             <h2 id="taskTitle"></h2>
-            <p id="taskGuide" class="muted"></p>
 
             <div id="visualArea"></div>
             <div id="listenArea"></div>
@@ -195,6 +194,13 @@
               <button class="btn secondary" id="backToAnswer" type="button">답변 화면으로</button>
               <button class="btn secondary" id="taskPromptBtn" type="button">이 답변 피드백 자료</button>
             </div>
+
+            <details class="evaluation-details answer-strategy-details hidden" id="answerStrategyDetails">
+              <summary><span>답변 전략 보기 <small>선택</small></span></summary>
+              <div class="evaluation-details-body">
+                <p id="taskGuide" class="muted answer-strategy-guide"></p>
+              </div>
+            </details>
 
             <div id="taskPromptArea" class="hidden prompt-area">
               <div class="prompt" id="taskPrompt"></div>

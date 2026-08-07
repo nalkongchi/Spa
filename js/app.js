@@ -1297,7 +1297,10 @@ async function loadTask(index) {
   const visualStep = task.visualGroupId ? ` · 자료 질문 ${Number(task.visualQuestionIndex) + 1}/${task.visualQuestionCount}` : '';
   $('taskType').textContent = `${taskTypeName(task)}${visualStep} · ${index + 1}/${currentTasks.length}`;
   $('taskTitle').textContent = task.visualGroupId ? (task.visualTitle || task.title.split(' · ')[0]) : task.title;
-  $('taskGuide').textContent = task.guide || '';
+  const taskGuide = typeof task.guide === 'string' ? task.guide.trim() : '';
+  $('taskGuide').textContent = taskGuide;
+  $('answerStrategyDetails').classList.toggle('hidden', !taskGuide);
+  $('answerStrategyDetails').open = false;
   $('questionDisplay').className = 'question-hidden';
   $('questionDisplay').textContent = task.type === 'listening' && task.allowListen ? '지문을 들은 뒤 질문을 확인하세요.' : '먼저 ‘질문 보기·듣기’를 누르세요.';
   $('revealBtn').textContent = '질문 보기·듣기';
@@ -2086,6 +2089,7 @@ function showEvaluation() {
   saveDraft();
   stage = 'evaluation';
   $('selfDiagnosisDetails').open = false;
+  $('answerStrategyDetails').open = false;
   $('expressionDetails').open = false;
   $('answerStage').classList.add('hidden');
   $('evaluationStage').classList.remove('hidden');

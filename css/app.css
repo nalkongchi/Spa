@@ -1511,6 +1511,7 @@ body.modal-open { overflow: hidden; }
 .evaluation-details[open] > summary::after { content: '접기  ▴'; }
 .evaluation-details-body { padding: 0 14px 14px; }
 .evaluation-details-body > .field:first-child { margin-top: 8px; }
+.answer-strategy-guide { margin: 8px 0 0; white-space: pre-line; }
 .expression-details .expression-capture {
   margin: 6px 0 0;
   padding: 0;
