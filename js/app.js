@@ -306,6 +306,7 @@ let openWeeks = null;
 let expressionFilter = '전체';
 let expressionReviewQueue = [];
 let expressionReviewIndex = 0;
+let expressionReviewMode = 'due';
 let resumeSaveTimer = null;
 let resumeDirty = false;
 let isRestoringResume = false;
@@ -2447,6 +2448,7 @@ function renderExpressionHub() {
     ? (due.length ? '한국어 단서를 보고 영어 표현을 먼저 소리 내어 말해보세요.' : '오늘 복습은 끝났습니다. 저장한 표현은 기능별로 다시 볼 수 있어요.')
     : '새 문제를 풀고 재사용할 표현을 저장해보세요.';
   $('startExpressionReview').disabled = due.length === 0;
+  $('startAllExpressionReview').disabled = expressionCards.length === 0;
 
   const categories = ['전체', ...EXPRESSION_CATEGORIES.filter(category => expressionCards.some(card => card.category === category))];
   $('expressionCategoryFilter').innerHTML = categories.map(category => `<button class="expression-filter${expressionFilter === category ? ' active' : ''}" data-expression-filter="${esc(category)}" type="button">${esc(category)}</button>`).join('');
@@ -2579,8 +2581,11 @@ document.addEventListener('keydown', event => {
   if (!$('expressionDeleteModal').classList.contains('hidden')) closeExpressionDeleteModal();
 });
 
-function startExpressionReview() {
-  expressionReviewQueue = expressionCards.filter(card => isExpressionDue(card.id)).sort((a, b) => (expressionMeta(a.id).nextDueAt || 0) - (expressionMeta(b.id).nextDueAt || 0));
+function startExpressionReview(mode = 'due') {
+  expressionReviewMode = mode === 'all' ? 'all' : 'due';
+  expressionReviewQueue = expressionReviewMode === 'all'
+    ? [...expressionCards]
+    : expressionCards.filter(card => isExpressionDue(card.id)).sort((a, b) => (expressionMeta(a.id).nextDueAt || 0) - (expressionMeta(b.id).nextDueAt || 0));
   expressionReviewIndex = 0;
   if (!expressionReviewQueue.length) return;
   $('expressionReviewPanel').classList.remove('hidden');
@@ -2592,10 +2597,11 @@ function showExpressionReviewCard() {
   const card = expressionReviewQueue[expressionReviewIndex];
   if (!card) {
     $('expressionReviewPanel').classList.add('hidden');
-    toast('오늘의 표현 복습을 마쳤습니다.');
+    toast(expressionReviewMode === 'all' ? '전체 표현 복습을 마쳤습니다.' : '오늘의 표현 복습을 마쳤습니다.');
     renderExpressionHub();
     return;
   }
+  $('expressionReviewMode').textContent = expressionReviewMode === 'all' ? '전체 표현 자유 복습' : '오늘의 예정 복습';
   $('expressionReviewProgress').textContent = `${expressionReviewIndex + 1}/${expressionReviewQueue.length}`;
   $('expressionReviewCategory').textContent = card.category || '기타';
   $('expressionReviewCue').textContent = card.cue || '영어 표현을 떠올려 보세요.';
@@ -2609,31 +2615,34 @@ function showExpressionReviewCard() {
 function rateExpression(result) {
   const card = expressionReviewQueue[expressionReviewIndex];
   if (!card) return;
-  const old = expressionMeta(card.id);
-  let streak = old.streak || 0;
-  let days = 1;
-  if (result === 'again') {
-    streak = 0;
-    days = 1;
-  } else if (result === 'assisted') {
-    streak = Math.max(0, streak);
-    days = streak >= 2 ? 3 : 2;
-  } else {
-    streak += 1;
-    days = [0, 3, 7, 14, 30, 60][Math.min(streak, 5)];
+  if (expressionReviewMode !== 'all') {
+    const old = expressionMeta(card.id);
+    let streak = old.streak || 0;
+    let days = 1;
+    if (result === 'again') {
+      streak = 0;
+      days = 1;
+    } else if (result === 'assisted') {
+      streak = Math.max(0, streak);
+      days = streak >= 2 ? 3 : 2;
+    } else {
+      streak += 1;
+      days = [0, 3, 7, 14, 30, 60][Math.min(streak, 5)];
+    }
+    expressionReview[card.id] = {
+      streak,
+      nextDueAt: Date.now() + days * 24 * 60 * 60 * 1000,
+      lastResult: result,
+      lastReviewedAt: new Date().toISOString()
+    };
+    saveExpressionData();
   }
-  expressionReview[card.id] = {
-    streak,
-    nextDueAt: Date.now() + days * 24 * 60 * 60 * 1000,
-    lastResult: result,
-    lastReviewedAt: new Date().toISOString()
-  };
-  saveExpressionData();
   expressionReviewIndex += 1;
   showExpressionReviewCard();
 }
 
-$('startExpressionReview')?.addEventListener('click', startExpressionReview);
+$('startExpressionReview')?.addEventListener('click', () => startExpressionReview('due'));
+$('startAllExpressionReview')?.addEventListener('click', () => startExpressionReview('all'));
 $('revealExpressionAnswer')?.addEventListener('click', () => {
   $('expressionReviewAnswer').classList.remove('hidden');
   $('revealExpressionAnswer').classList.add('hidden');

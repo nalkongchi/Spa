@@ -280,11 +280,15 @@
           <h2><span id="expressionDueCount">0</span>개가 기다리고 있어요</h2>
           <p id="expressionDueMessage" class="muted">새 문제를 풀고 재사용할 표현을 저장해보세요.</p>
         </div>
-        <button class="btn" id="startExpressionReview" type="button">복습 시작</button>
+        <div class="expression-review-actions">
+          <button class="btn" id="startExpressionReview" type="button">오늘 복습</button>
+          <button class="btn secondary" id="startAllExpressionReview" type="button">전체 복습</button>
+        </div>
       </div>
 
       <div class="card expression-review-panel hidden" id="expressionReviewPanel" aria-live="polite">
         <div class="expression-review-progress" id="expressionReviewProgress"></div>
+        <div class="expression-review-mode" id="expressionReviewMode" aria-live="polite"></div>
         <span class="chip" id="expressionReviewCategory">기타</span>
         <div class="expression-review-cue" id="expressionReviewCue"></div>
         <p class="muted">영어 표현을 먼저 소리 내어 말해보세요.</p>

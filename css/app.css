@@ -1028,7 +1028,10 @@ body::after {
 .expression-card-actions { margin-top: 11px; }
 .expression-empty { grid-column: 1 / -1; padding: 28px; }
 .expression-review-summary { padding: 20px; }
-.expression-review-summary .btn { flex: 0 0 auto; }
+.expression-review-summary { flex-wrap: wrap; }
+.expression-review-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: min(100%, 320px); }
+.expression-review-actions .btn { width: 100%; min-width: 0; white-space: nowrap; }
+.expression-review-mode { margin-top: 7px; color: var(--text-muted); font-size: 11px; font-weight: 800; }
 .expression-review-panel { text-align: center; }
 .expression-review-progress { color: var(--text-muted); font-size: 12px; font-weight: 850; }
 .expression-review-cue { max-width: 720px; margin: 22px auto 8px; color: var(--text-main); font-size: clamp(20px,4vw,28px); font-weight: 900; line-height: 1.5; }
@@ -1095,6 +1098,7 @@ body::after {
   .expression-save-row { align-items: stretch; flex-direction: column; }
   .expression-review-summary .btn,
   .expression-save-row .btn { width: 100%; }
+  .expression-review-actions { width: 100%; }
   .expression-review-rating { grid-template-columns: 1fr; }
   .expression-card-actions .btn { flex: 1 1 calc(50% - 4px); }
   .learning-records > summary { align-items: flex-start; flex-direction: column; }
